@@ -52,23 +52,23 @@ test_loader = torch.utils.data.DataLoader(
                    ])),
     batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
-aggregated_data = torch.Tensor()
-aggregated_label = torch.Tensor()
-for id, worker in workers.items():
-    ids_in_worker = list(worker._objects.keys()) # data & label
-    worker_data = worker.get_obj(ids_in_worker[0])
-    worker_label = worker.get_obj(ids_in_worker[1])
-    print("{}: get {} out of {}".format(worker.id, int(0.2 * len(worker_data)), len(worker_data)))
-    if len(aggregated_data) == 0:
-        aggregated_data = worker_data[:int(0.2 * len(worker_data))]
-        aggregated_label = worker_label[:int(0.2 * len(worker_label))]
-    else:
-        aggregated_data = torch.cat((aggregated_data, worker_data[:int(0.2 * len(worker_data))]), 0)
-        aggregated_label = torch.cat((aggregated_label, worker_label[:int(0.2 * len(worker_label))]), 0)
-
-print("Aggregated data contains {} records".format(len(aggregated_label)))
-# add collected data to the last worker
-aggregated_train = [aggregated_data.send(server), aggregated_label.send(server)]
+# aggregated_data = torch.Tensor()
+# aggregated_label = torch.Tensor()
+# for id, worker in workers.items():
+#     ids_in_worker = list(worker._objects.keys()) # data & label
+#     worker_data = worker.get_obj(ids_in_worker[0])
+#     worker_label = worker.get_obj(ids_in_worker[1])
+#     print("{}: get {} out of {}".format(worker.id, int(0.2 * len(worker_data)), len(worker_data)))
+#     if len(aggregated_data) == 0:
+#         aggregated_data = worker_data[:int(0.2 * len(worker_data))]
+#         aggregated_label = worker_label[:int(0.2 * len(worker_label))]
+#     else:
+#         aggregated_data = torch.cat((aggregated_data, worker_data[:int(0.2 * len(worker_data))]), 0)
+#         aggregated_label = torch.cat((aggregated_label, worker_label[:int(0.2 * len(worker_label))]), 0)
+#
+# print("Aggregated data contains {} records".format(len(aggregated_label)))
+# # add collected data to the last worker
+# aggregated_train = [aggregated_data.send(server), aggregated_label.send(server)]
 
 class Net(nn.Module):
     def __init__(self):
