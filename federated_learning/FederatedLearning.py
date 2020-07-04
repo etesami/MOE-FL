@@ -34,6 +34,9 @@ class FederatedLearning():
         self.workers = {}
         self.server = None
 
+        self.server_model = None
+        self.workers_model = dict()
+
         self.train_images = None
         self.train_labels = None
         self.hook = sy.TorchHook(torch)
@@ -52,9 +55,10 @@ class FederatedLearning():
 
 
     def create_workers(self):
+        logging.info("Creating {} workers".format(self.args.workers_num))
         for num in range(0, self.args.workers_num):
             worker_id = "worker" + str(num)
-            logging.info("Creating the worker: {}".format(worker_id))
+            logging.debug("Creating the worker: {}".format(worker_id))
             self.workers[worker_id] = sy.VirtualWorker(self.hook, id=worker_id)
 
     def create_server(self):
@@ -108,7 +112,7 @@ class FederatedLearning():
                 aggregated_label = np.concatenate((aggregated_label,
                                                 self.train_labels[:int(0.2 * len(self.train_images) / len(self.workers))]), 0)
 
-        logging.info("\nAggregated data contains {} records\n".format(len(aggregated_label)))
+        logging.info("Aggregated data contains {} records\n".format(len(aggregated_label)))
 
         dataset_server = FLCustomDataset(aggregated_data, aggregated_label,
                                         transform=transforms.Compose([
@@ -143,19 +147,31 @@ class FederatedLearning():
         elif model.location is not None:
             model.get()
 
+    # '''
+    # Attack 1
+    # Permute all 0 - 6000 labels (for given workers' id)
+    #  workers_id_list: the list of workers' id (zero-based)
+    # '''
+    def attack_premute_labels(self, workers_id_list):
+        for i in workers_id_list: 
+            self.train_labels[i * int(len(self.train_labels) / len(self.workers)): 
+                        (i + 1) * int(len(self.train_labels) / len(self.workers))] = \
+                        np.random.permutation(
+                            self.train_labels[i * int(len(self.train_labels) / len(self.workers)):
+                            (i + 1) * int(len(self.train_labels) / len(self.workers))])
 
-    def train(self, workers_model, federated_train_loader, epoch):
+    def train_workers(self, federated_train_loader, epoch):
         workers_opt = {}
         file = open(self.output_prefix + "_train", "a")
         for ww_id, ww in self.workers.items():
-            if workers_model[ww_id].location is None \
-                    or workers_model[ww_id].location.id != ww_id:
-                workers_model[ww_id].send(ww)
-            workers_opt[ww_id] = optim.SGD(params=workers_model[ww_id].parameters(), lr=self.args.lr)
+            if self.workers_model[ww_id].location is None \
+                    or self.workers_model[ww_id].location.id != ww_id:
+                self.workers_model[ww_id].send(ww)
+            workers_opt[ww_id] = optim.SGD(params=self.workers_model[ww_id].parameters(), lr=self.args.lr)
 
         for batch_idx, (data, target) in enumerate(federated_train_loader):
             worker_id = data.location.id
-            worker_model = workers_model[worker_id]
+            worker_model = self.workers_model[worker_id]
             worker_opt = workers_opt[worker_id]
             worker_model.train()
             data, target = data.to(self.device), target.to(self.device)
@@ -172,21 +188,20 @@ class FederatedLearning():
                 logging.info('Train Epoch: {} [{}] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                     epoch, worker_id, batch_idx, batch_idx * self.args.batch_size, len(federated_train_loader) * self.args.batch_size,
                                                 100. * batch_idx / len(federated_train_loader), loss.item()))
-        # Need to getback the workers_model
+        # Need to getback the self.workers_model
         file.close()
         print()
-        return workers_model
 
 
-    def train_server(self, server_model, federated_train_server_loader, epoch):
+    def train_server(self, federated_train_server_loader, epoch):
         file = open(self.output_prefix + "_train_server", "a")
-        self.send_model(server_model, self.server, "server")
-        server_opt = optim.SGD(server_model.parameters(), lr=self.args.lr)
+        self.send_model(self.server_model, self.server, "server")
+        server_opt = optim.SGD(self.server_model.parameters(), lr=self.args.lr)
         for batch_idx, (data, target) in enumerate(federated_train_server_loader):
-            server_model.train()
+            self.server_model.train()
             data, target = data.to(self.device), target.to(self.device)
             server_opt.zero_grad()
-            output = server_model(data)
+            output = self.server_model(data)
             loss = F.nll_loss(output, target)
             loss.backward()
             server_opt.step()
@@ -200,9 +215,8 @@ class FederatedLearning():
                                     100. * batch_idx / len(federated_train_server_loader), loss.item()))
         file.close()
         # Always need to get back the model
-        self.getback_model(server_model)
+        self.getback_model(self.server_model)
         print()
-        return server_model
 
 
     def test(self, model, test_loader, epoch):
@@ -224,25 +238,25 @@ class FederatedLearning():
         TO_FILE = '{} {} {}\n'.format(epoch, test_loss, 100. * correct / len(test_loader.dataset))
         file.write(TO_FILE)
         file.close()
-        logging.info('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        logging.info('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
             test_loss, correct, len(test_loader.dataset),
             100. * correct / len(test_loader.dataset)))
         # self.getback_model(server_model)
 
 
-    def find_best_weights(self, base_model, workers_model, epoch):
+    def find_best_weights(self, reference_model, workers_model, epoch):
         file = open(self.output_prefix + "_weights", "a")
-        self.getback_model(base_model)
+        self.getback_model(reference_model)
         with torch.no_grad():
-            server_layers = [None] * 8
-            server_layers[0] = base_model.conv1.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            server_layers[1] = base_model.conv1.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            server_layers[2] = base_model.conv2.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            server_layers[3] = base_model.conv2.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            server_layers[4] = base_model.fc1.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            server_layers[5] = base_model.fc1.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            server_layers[6] = base_model.fc2.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            server_layers[7] = base_model.fc2.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers = [None] * 8
+            reference_layers[0] = reference_model.conv1.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[1] = reference_model.conv1.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[2] = reference_model.conv2.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[3] = reference_model.conv2.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[4] = reference_model.fc1.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[5] = reference_model.fc1.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[6] = reference_model.fc2.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[7] = reference_model.fc2.bias.data.numpy().copy().reshape(-1, 1).ravel()
 
             workers_params = {}
             """
@@ -282,7 +296,7 @@ class FederatedLearning():
 
             workers_all_params = []
             print()
-            print("Start the optimization....")
+            logging.info("Start the optimization....")
             workers_all_params.append(np.array([]).reshape(workers_params["worker0"][0].shape[0], 0))
             workers_all_params.append(np.array([]).reshape(workers_params["worker0"][1].shape[0], 0))
             workers_all_params.append(np.array([]).reshape(workers_params["worker0"][2].shape[0], 0))
@@ -304,14 +318,14 @@ class FederatedLearning():
 
             W = cp.Variable(len(workers_model))
 
-            objective = cp.Minimize(cp.norm2(cp.matmul(workers_all_params[0], W) - server_layers[0]) +
-                                    cp.norm2(cp.matmul(workers_all_params[1], W) - server_layers[1]) +
-                                    cp.norm2(cp.matmul(workers_all_params[2], W) - server_layers[2]) +
-                                    cp.norm2(cp.matmul(workers_all_params[3], W) - server_layers[3]) +
-                                    cp.norm2(cp.matmul(workers_all_params[4], W) - server_layers[4]) +
-                                    cp.norm2(cp.matmul(workers_all_params[5], W) - server_layers[5]) +
-                                    cp.norm2(cp.matmul(workers_all_params[6], W) - server_layers[6]) +
-                                    cp.norm2(cp.matmul(workers_all_params[7], W) - server_layers[7]))
+            objective = cp.Minimize(cp.norm2(cp.matmul(workers_all_params[0], W) - reference_layers[0]) +
+                                    cp.norm2(cp.matmul(workers_all_params[1], W) - reference_layers[1]) +
+                                    cp.norm2(cp.matmul(workers_all_params[2], W) - reference_layers[2]) +
+                                    cp.norm2(cp.matmul(workers_all_params[3], W) - reference_layers[3]) +
+                                    cp.norm2(cp.matmul(workers_all_params[4], W) - reference_layers[4]) +
+                                    cp.norm2(cp.matmul(workers_all_params[5], W) - reference_layers[5]) +
+                                    cp.norm2(cp.matmul(workers_all_params[6], W) - reference_layers[6]) +
+                                    cp.norm2(cp.matmul(workers_all_params[7], W) - reference_layers[7]))
 
             constraints = [0 <= W, W <= 1, sum(W) == 1]
             prob = cp.Problem(objective, constraints)
@@ -324,10 +338,10 @@ class FederatedLearning():
             return W.value
 
 
-    def update_models(self, W, base_model, server_model, workers_model):
+    def update_models(self, W, server_model, workers_model):
         self.getback_model(workers_model)
         self.getback_model(server_model)
-        self.getback_model(base_model)
+        # self.getback_model(base_model)
         tmp_model = FLNet().to(self.device)
 
         with torch.no_grad():
@@ -387,12 +401,15 @@ class FederatedLearning():
                 workers_model[worker_id].fc1.bias.data = tmp_model.fc1.bias.data
                 workers_model[worker_id].fc2.weight.data = tmp_model.fc2.weight.data
                 workers_model[worker_id].fc2.bias.data = tmp_model.fc2.bias.data
+        # return server_model, workers_model
+
 
     def create_server_model(self):
-        return FLNet().to(self.device)
+        self.server_model = FLNet().to(self.device)
+
 
     def create_workers_model(self):
-        workers_model = {}
+        # workers_model = {}
         for worker_id, worker in self.workers.items():
-            workers_model[worker_id] = FLNet().to(self.device)
-        return workers_model
+            self.workers_model[worker_id] = self.server_model.copy()
+        # return workers_model
