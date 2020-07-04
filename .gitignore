@@ -1,0 +1,4 @@
+**/.vscode
+**/data_tmp
+**/*.pvc
+**/__pycache__
