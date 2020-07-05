@@ -73,6 +73,11 @@ class FederatedLearning():
         self.train_images = np.asarray(train_images, dtype=np.uint8).reshape(-1, 28, 28)
         self.train_labels = np.asarray(train_labels)
 
+        indices = np.arange(self.train_images.shape[0])
+        np.random.shuffle(indices)
+        self.train_images = self.train_images[indices]
+        self.train_labels = self.train_labels[indices]
+
 
     def create_datasets(self):
         logging.info("Creating train_dataset_loader and test_dataset_loader")
@@ -95,25 +100,21 @@ class FederatedLearning():
 
 
     def create_aggregated_data(self):
+        fraction = 0.2
         logging.info("Creating the aggregated data for the server")
-        aggregated_data = None
-        aggregated_label = None
+        aggregated_label = self.train_labels.copy()
+        aggregated_data = self.train_images.copy()
+        indices = np.array([], dtype = np.int64)
+        for i in range(0, len(self.workers)):
+            step = int(len(self.train_labels) / len(self.workers))
+            logging.debug("Selecting {} records from index {} to {} from [worker{}]".format(
+                int(fraction * step), i * step, i * step + int((i + fraction) * step), i))
+            new_indices_to_extract = np.arange(i * step, int((i + fraction) * step), dtype = np.int64)
+            indices = np.concatenate((indices, new_indices_to_extract))
 
-        for id, worker in self.workers.items():
-            logging.debug("Send out {} records from {} out of {}".format(worker.id,
-                                                                int(0.2 * len(self.train_images) / len(self.workers)),
-                                                                len(self.train_images) / len(self.workers)))
-            if aggregated_data is None:
-                aggregated_data = self.train_images[:int(0.2 * len(self.train_images) / len(self.workers))]
-                aggregated_label = self.train_labels[:int(0.2 * len(self.train_images) / len(self.workers))]
-            else:
-                aggregated_data = np.concatenate((aggregated_data,
-                                                self.train_images[:int(0.2 * len(self.train_images) / len(self.workers))]), 0)
-                aggregated_label = np.concatenate((aggregated_label,
-                                                self.train_labels[:int(0.2 * len(self.train_images) / len(self.workers))]), 0)
-
-        logging.info("Aggregated data contains {} records\n".format(len(aggregated_label)))
-
+        aggregated_data = aggregated_data[indices]
+        aggregated_label = aggregated_label[indices]
+        
         dataset_server = FLCustomDataset(aggregated_data, aggregated_label,
                                         transform=transforms.Compose([
                                             transforms.ToTensor(),
@@ -153,7 +154,10 @@ class FederatedLearning():
     #  workers_id_list: the list of workers' id (zero-based)
     # '''
     def attack_premute_labels(self, workers_id_list):
+        logging.info("ATTACK Test 1: Permute labels of workers: {}".format(workers_id_list))
         for i in workers_id_list: 
+            logging.debug("Permute from {}".format(i * int(len(self.train_labels) / len(self.workers))))
+            logging.debug("Permute to {}".format((i + 1) * int(len(self.train_labels) / len(self.workers))))
             self.train_labels[i * int(len(self.train_labels) / len(self.workers)): 
                         (i + 1) * int(len(self.train_labels) / len(self.workers))] = \
                         np.random.permutation(
@@ -220,7 +224,6 @@ class FederatedLearning():
 
 
     def test(self, model, test_loader, epoch):
-        # self.send_model(model, self.server, "server")
         file = open(self.output_prefix + "_test", "a")
         model.eval()
         test_loss = 0
@@ -241,22 +244,23 @@ class FederatedLearning():
         logging.info('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
             test_loss, correct, len(test_loader.dataset),
             100. * correct / len(test_loader.dataset)))
-        # self.getback_model(server_model)
 
 
-    def find_best_weights(self, reference_model, workers_model, epoch):
+    def find_best_weights(self, epoch):
+        # reference_model = self.server_model
+        # workers_model = self.workers_model
         file = open(self.output_prefix + "_weights", "a")
-        self.getback_model(reference_model)
+        self.getback_model(self.server_model)
         with torch.no_grad():
             reference_layers = [None] * 8
-            reference_layers[0] = reference_model.conv1.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[1] = reference_model.conv1.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[2] = reference_model.conv2.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[3] = reference_model.conv2.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[4] = reference_model.fc1.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[5] = reference_model.fc1.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[6] = reference_model.fc2.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[7] = reference_model.fc2.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[0] = self.server_model.conv1.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[1] = self.server_model.conv1.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[2] = self.server_model.conv2.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[3] = self.server_model.conv2.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[4] = self.server_model.fc1.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[5] = self.server_model.fc1.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[6] = self.server_model.fc2.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[7] = self.server_model.fc2.bias.data.numpy().copy().reshape(-1, 1).ravel()
 
             workers_params = {}
             """
@@ -274,8 +278,8 @@ class FederatedLearning():
                 convW0_21
                 convW0_22
             """
-            self.getback_model(workers_model)
-            for worker_id, worker_model in workers_model.items():
+            self.getback_model(self.workers_model)
+            for worker_id, worker_model in self.workers_model.items():
                 workers_params[worker_id] = [[] for i in range(8)]
                 workers_params[worker_id][0] = worker_model.conv1.weight.data.numpy().copy().reshape(-1, 1)
                 workers_params[worker_id][1] = worker_model.conv1.bias.data.numpy().copy().reshape(-1, 1)
@@ -285,6 +289,13 @@ class FederatedLearning():
                 workers_params[worker_id][5] = worker_model.fc1.bias.data.numpy().copy().reshape(-1, 1)
                 workers_params[worker_id][6] = worker_model.fc2.weight.data.numpy().copy().reshape(-1, 1)
                 workers_params[worker_id][7] = worker_model.fc2.bias.data.numpy().copy().reshape(-1, 1)
+
+            # logging.debug("workers_param shape: {}".format(len(workers_params)))
+            # for key in workers_params:
+            #     logging.debug("workers_param[{}]: {}".format(key, len(workers_params[key])))
+            #     if key == "worker0":
+            #         for i in range(0, len(workers_params[key])):
+            #             logging.debug("workers_param[{}][{}]: {}".format(key, i, len(workers_params[key][i])))
             """
             --> conv1.weight
             workers_all_params[0] =
@@ -316,7 +327,11 @@ class FederatedLearning():
                 workers_all_params[6] = np.concatenate((workers_all_params[6], workers_params[worker_id][6]), 1)
                 workers_all_params[7] = np.concatenate((workers_all_params[7], workers_params[worker_id][7]), 1)
 
-            W = cp.Variable(len(workers_model))
+            # logging.debug("workers_all_param: {}".format(len(workers_all_params)))
+            # for i in range(len(workers_all_params)):
+            #     logging.debug("workers_all_params[{}]: {}".format(i, workers_all_params[i].shape))
+
+            W = cp.Variable(len(self.workers_model))
 
             objective = cp.Minimize(cp.norm2(cp.matmul(workers_all_params[0], W) - reference_layers[0]) +
                                     cp.norm2(cp.matmul(workers_all_params[1], W) - reference_layers[1]) +
@@ -326,6 +341,10 @@ class FederatedLearning():
                                     cp.norm2(cp.matmul(workers_all_params[5], W) - reference_layers[5]) +
                                     cp.norm2(cp.matmul(workers_all_params[6], W) - reference_layers[6]) +
                                     cp.norm2(cp.matmul(workers_all_params[7], W) - reference_layers[7]))
+
+            for i in range(len(workers_all_params)):
+                logging.debug("Mean [{}]: {}".format(i, np.round(np.mean(workers_all_params[i],0) - np.mean(reference_layers[i],0),6)))
+                print()
 
             constraints = [0 <= W, W <= 1, sum(W) == 1]
             prob = cp.Problem(objective, constraints)

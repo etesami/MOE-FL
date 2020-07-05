@@ -20,21 +20,17 @@ fl = FederatedLearning(
         epochs_num = EPOCH_NUM, 
         output_prefix = OUTPUT_PATH,
         mnist_path = MNIST_PATH, 
-        log_level = logging.INFO)
+        log_level = logging.DEBUG)
 
 fl.create_workers()
 fl.create_server()
 fl.load_data()
-train_data_loader, test_data_loader = fl.create_datasets()
+
+fl.attack_premute_labels([0])
 
 server_data_loader = fl.create_aggregated_data()
+train_data_loader, test_data_loader = fl.create_datasets()
 
-fl.attack_premute_labels([5,6,7,8,9])
-
-'''
-Clients' models are being trained locally.
-Server model is being updated only
-'''
 fl.create_server_model()
 fl.create_workers_model()
 
@@ -42,7 +38,7 @@ for epoch in range(1, EPOCH_NUM + 1):
     fl.train_server(server_data_loader, epoch)
     fl.train_workers(train_data_loader, epoch)
     print()
-    W = fl.find_best_weights(fl.server_model, fl.workers_model, epoch)
+    W = fl.find_best_weights(epoch)
 #     W = [0.1] * 10
 
     # base model is meant nothing in this scenario
