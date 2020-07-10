@@ -17,7 +17,7 @@ if [[ -z "$ERR" ]]; then
         NEW_FILE=$FILENAME"_tmp"
         gnuplot -persist -e "filename='$NEW_FILE'" gweight.gnu
         ps2pdf -dAutoRotatePages=/None -dEPSCrop $NEW_FILE".ps"
-        rm $NEW_FILE
+        rm $NEW_FILE".ps"
 else
     echo "Input format: <fileName>"
 fi

@@ -20,15 +20,27 @@ if [[ -z "$ERR" ]]; then
 	  fi
 		if [ "$1" == "train" ]; then
 			./add-lines.sh $FILENAME
-			gnuplot -persist -e "filename='$FILENAME'" -e "step_num=94" gtrain.gnu 
+			FILENAME_TMP=$FILENAME".tmp"
+			if [ ! -e $FILENAME_TMP ]; then
+				echo "Seems modified file was not created!"
+				exit 1
+			fi
+			gnuplot -persist -e "filename='$FILENAME_TMP'" -e "step_num=94" gtrain.gnu 
+			rm $FILENAME_TMP
 		elif [ "$1" == "trainserv" ]; then
 			./add-lines.sh $FILENAME
-			gnuplot -persist -e "filename='$FILENAME'" -e "step_num=19" gtrain.gnu 
+			FILENAME_TMP=$FILENAME".tmp"
+			if [ ! -e $FILENAME_TMP ]; then
+				echo "Seems modified file was not created!"
+				exit 1
+			fi
+			gnuplot -persist -e "filename='$FILENAME_TMP'" -e "step_num=19" gtrain.gnu 
+			rm $FILENAME_TMP
 		else
-			gnuplot -persist -e "filename='$FILENAME'" -e "step_num=19" gtest.gnu 
+			gnuplot -persist -e "filename='$FILENAME_TMP'" -e "step_num=19" gtest.gnu 
 		fi
-		ps2pdf -dAutoRotatePages=/None -dEPSCrop $FILENAME".ps"
-		rm $FILENAME".ps"
+		ps2pdf -dAutoRotatePages=/None -dEPSCrop $FILENAME_TMP".ps"
+		rm $FILENAME_TMP".ps"
 else
     echo "Input format: <test/train trainserv> <fileName>"
 fi
