@@ -7,8 +7,8 @@ import cvxpy as cp
 import numpy as np
 import logging
 from mnist import MNIST
-from FLCustomDataset import FLCustomDataset
-from FLNet import FLNet
+from federated_learning.FLCustomDataset import FLCustomDataset
+from federated_learning.FLNet import FLNet
 
 class Arguments():
     def __init__(self, epochs_num, workers_num, use_cuda = False):
@@ -77,6 +77,19 @@ class FederatedLearning():
         np.random.shuffle(indices)
         self.train_images = self.train_images[indices]
         self.train_labels = self.train_labels[indices]
+
+    def count_digits(self):
+        count = {}
+        for i in range(0,10):
+            count[i] = 0
+        for d in self.train_labels:
+            count[d] = count[d] + 1
+
+        logging.info("Percentage of digits in whole training dataset: {}".format(
+            [round(d*100.0/len(self.train_labels),2) for _, d in count.items()]))
+        with open(self.output_prefix + "_digits", "w") as f:
+            f.write(' '.join([str(round(d*100.0/len(self.train_labels),2)) for _, d in count.items()]))
+            f.close()
 
 
     def create_datasets(self):
@@ -155,16 +168,12 @@ class FederatedLearning():
     # '''
     def attack_permute_labels_randomly(self, workers_id_list):
         logging.info("ATTACK 1: Permute labels of workers: {}".format(workers_id_list))
+        step = int(len(self.train_labels) / len(self.workers))
         for i in workers_id_list: 
             logging.debug("-- Permute from index {} to {}".format(
-                i * int(len(self.train_labels) / len(self.workers))),
-                (i + 1) * int(len(self.train_labels) / len(self.workers)
-                ))
-            self.train_labels[i * int(len(self.train_labels) / len(self.workers)): 
-                        (i + 1) * int(len(self.train_labels) / len(self.workers))] = \
-                        np.random.permutation(
-                            self.train_labels[i * int(len(self.train_labels) / len(self.workers)):
-                            (i + 1) * int(len(self.train_labels) / len(self.workers))])
+                i * step, (i + 1) * step))
+            self.train_labels[i * step:(i + 1) * step] = \
+                        np.random.permutation(self.train_labels[i * step:(i + 1) * step])
 
     def attack_permute_labels_collaborative(self, workers_id_list, data_percentage):
         logging.info("ATTACK 2: Permute {} percentage of labels of the given workers: {}".format(data_percentage, workers_id_list))

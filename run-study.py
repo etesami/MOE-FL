@@ -1,53 +1,43 @@
 """
-Usage: run-study.py \n\t\t(--avg | --opt) \n\t\t--attack=<attack-type> \n\t\t--mal-workers=<list-of-uesr-ids> \n\t\t[--data-percentage=<data-percentage>]  \n\t\t--output-file=<output-filename>
+Usage: run-study.py \n\t\t(--avg | --opt) \n\t\t--attack=<attack-type> \n\t\t[--mal-workers=<list-of-uesr-ids>] \n\t\t[--data-percentage=<data-percentage>]  \n\t\t--output-file=<output-filename>
 """
 from docopt import docopt
 from federated_learning.FederatedLearning import FederatedLearning
-import logging, ast, torch
-from FLNet import FLNet
-import numpy as np
+import logging, ast
 arguments = docopt(__doc__)
-
-# '''
-# 01_avg: average, normal situation
-# 02_opt: wieghted average, normal situation
-# 03_att1_avg: average, attack 1
-# 04_att1_opt: wieghted average, attack 1
-# '''
 
 # print(arguments)
 
 OUTPUT_PATH_PREFIX = "data_tmp/"
 MNIST_PATH = "/home/ubuntu/data/MNIST"
 WORKERS_NUM = 10
-EPOCH_NUM = 2
+EPOCH_NUM = 5
 
 fl = FederatedLearning(
         workers_num = WORKERS_NUM, 
         epochs_num = EPOCH_NUM, 
         output_prefix = OUTPUT_PATH_PREFIX + arguments['--output-file'],
         mnist_path = MNIST_PATH, 
-        log_level = logging.DEBUG)
+        log_level = logging.INFO)
 
 fl.create_workers()
 fl.create_server()
 fl.load_data()
 
-count = {}
-for i in range(0,10):
-    count[i] = 0
-for d in fl.train_labels:
-    count[d] = count[d] + 1
+# Count the number of digits
+fl.count_digits()
 
-logging.info("Percentage of digits in whole training dataset: {}".format([round(d*100.0/len(fl.train_labels),2) for _, d in count.items()]))
+logging.debug("Some sample data for user 1: {}".format(fl.train_labels[6000:6025]))
 
-logging.debug(fl.train_labels[6000:6025])
-mal_users_list = ast.literal_eval(arguments['--mal-workers'])
-data_percentage = int(arguments['--data-percentage'])
 if arguments['--attack'] == "1":
+    mal_users_list = ast.literal_eval(arguments['--mal-workers'])
     fl.attack_permute_labels_randomly(mal_users_list)
 elif arguments['--attack'] == "2":
+    mal_users_list = ast.literal_eval(arguments['--mal-workers'])
+    data_percentage = int(arguments['--data-percentage'])
     a = fl.attack_permute_labels_collaborative(mal_users_list, 40)
+else:
+    logging.info("** No attack is performed on the dataset.")
 
 server_data_loader = fl.create_aggregated_data()
 train_data_loader, test_data_loader = fl.create_datasets()
@@ -59,8 +49,8 @@ for epoch in range(1, EPOCH_NUM + 1):
     fl.train_server(server_data_loader, epoch)
     fl.train_workers(train_data_loader, epoch)
     print()
-    # W = fl.find_best_weights(epoch)
-    W = [0.1] * 10
+    W = fl.find_best_weights(epoch)
+    # W = [0.1] * 10
 
     # base model is meant nothing in this scenario
     fl.update_models(W, fl.server_model, fl.workers_model)
