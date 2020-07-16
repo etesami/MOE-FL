@@ -150,19 +150,87 @@ class FederatedLearning():
 
     # '''
     # Attack 1
-    # Permute all 0 - 6000 labels (for given workers' id)
-    #  workers_id_list: the list of workers' id (zero-based)
+    # Permute all labels for given workers' id
+    # workers_id_list: the list of workers' id (zero-based)
     # '''
-    def attack_premute_labels(self, workers_id_list):
-        logging.info("ATTACK Test 1: Permute labels of workers: {}".format(workers_id_list))
+    def attack_permute_labels_randomly(self, workers_id_list):
+        logging.info("ATTACK 1: Permute labels of workers: {}".format(workers_id_list))
         for i in workers_id_list: 
-            logging.debug("Permute from {}".format(i * int(len(self.train_labels) / len(self.workers))))
-            logging.debug("Permute to {}".format((i + 1) * int(len(self.train_labels) / len(self.workers))))
+            logging.debug("-- Permute from index {} to {}".format(
+                i * int(len(self.train_labels) / len(self.workers))),
+                (i + 1) * int(len(self.train_labels) / len(self.workers)
+                ))
             self.train_labels[i * int(len(self.train_labels) / len(self.workers)): 
                         (i + 1) * int(len(self.train_labels) / len(self.workers))] = \
                         np.random.permutation(
                             self.train_labels[i * int(len(self.train_labels) / len(self.workers)):
                             (i + 1) * int(len(self.train_labels) / len(self.workers))])
+
+    def attack_permute_labels_collaborative(self, workers_id_list, data_percentage):
+        logging.info("ATTACK 2: Permute {} percentage of labels of the given workers: {}".format(data_percentage, workers_id_list))
+        
+        # Find labels which are going to be permuted base on the value of the percentage
+        labels_to_be_changed = None
+        if 20 <= data_percentage and data_percentage < 40:
+            labels_to_be_changed = np.array([0, 1])
+        elif 40 <= data_percentage and data_percentage < 60:
+            labels_to_be_changed = np.array([0, 1, 2, 3])
+        elif 60 <= data_percentage and data_percentage < 80:
+            labels_to_be_changed = np.array([0, 1, 2, 3, 4, 5])
+        elif 80 <= data_percentage and data_percentage < 100:
+            labels_to_be_changed = np.array([0, 1, 2, 3, 4, 5, 6, 7])
+        elif data_percentage == 100:
+            labels_to_be_changed = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        logging.debug("Affected labels: {}".format(labels_to_be_changed))
+
+        # Find index of each number in the train_label and store them
+        # into a dic named labels_indexes
+        labels_indexes = {}
+        for i in range(0, 10):
+            labels_indexes[i] = np.array([], dtype = np.int64)
+        
+        # Initialization of indexes
+        index = 0
+        for n in self.train_labels:
+            labels_indexes[n] = np.concatenate((labels_indexes[n], [index]))
+            index = index + 1
+
+        step = int(len(self.train_labels) / len(self.workers))
+        # Start permutation
+        for i in workers_id_list:
+            for l in range(0, len(labels_to_be_changed), 2):
+                
+                # ex.
+                # labels_to_be_changed = [0, 1]
+                # labels_to_be_changed[l] = 0
+                # labels_to_be_changed[l + 1] = 1 
+                # labels_indexes[0] = list if indexes of 0
+                logging.debug("-- Permute {} with {} from index {} to {}".format(
+                    labels_to_be_changed[l], labels_to_be_changed[l+1],
+                    i * step, (i + 1) * step
+                    ))
+
+                indexes_first_digit = np.where(
+                    (i * step <= labels_indexes[labels_to_be_changed[l]]) &
+                    (labels_indexes[labels_to_be_changed[l]] < (i + 1) * step)
+                )[0]
+                logging.debug("-- To be verified: Some indexes of {}: {}".format(
+                    labels_to_be_changed[l], 
+                    labels_indexes[labels_to_be_changed[l]][indexes_first_digit][0:10])
+                )
+                
+                indexes_sec_digit = np.where(
+                    (i * step <= labels_indexes[labels_to_be_changed[l + 1]]) &
+                    (labels_indexes[labels_to_be_changed[l + 1]] < (i + 1) * step)
+                )[0]
+                logging.debug("-- To be verified: Some indexes of {}: {}".format(
+                    labels_to_be_changed[l + 1], 
+                    labels_indexes[labels_to_be_changed[l + 1]][indexes_sec_digit][0:10])
+                )
+
+                self.train_labels[labels_indexes[labels_to_be_changed[l]][indexes_first_digit]] = labels_to_be_changed[l + 1]
+                self.train_labels[labels_indexes[labels_to_be_changed[l + 1]][indexes_sec_digit]]= labels_to_be_changed[l]
+                    # labels_to_be_changed[l + 1], labels_to_be_changed[l]
 
     def train_workers(self, federated_train_loader, epoch):
         workers_opt = {}
@@ -360,7 +428,6 @@ class FederatedLearning():
     def update_models(self, W, server_model, workers_model):
         self.getback_model(workers_model)
         self.getback_model(server_model)
-        # self.getback_model(base_model)
         tmp_model = FLNet().to(self.device)
 
         with torch.no_grad():
@@ -420,15 +487,10 @@ class FederatedLearning():
                 workers_model[worker_id].fc1.bias.data = tmp_model.fc1.bias.data
                 workers_model[worker_id].fc2.weight.data = tmp_model.fc2.weight.data
                 workers_model[worker_id].fc2.bias.data = tmp_model.fc2.bias.data
-        # return server_model, workers_model
-
 
     def create_server_model(self):
         self.server_model = FLNet().to(self.device)
 
-
     def create_workers_model(self):
-        # workers_model = {}
         for worker_id, worker in self.workers.items():
             self.workers_model[worker_id] = self.server_model.copy()
-        # return workers_model
