@@ -166,24 +166,59 @@ class FederatedLearning():
     # Permute all labels for given workers' id
     # workers_id_list: the list of workers' id (zero-based)
     # '''
-    def attack_permute_labels_randomly(self, workers_id_list):
-        logging.info("ATTACK 1: Permute labels of workers: {}".format(workers_id_list))
+    def attack_permute_labels_randomly(self, workers_percentage):
+        logging.info("ATTACK 1: Permute labels of {} percentage of workers".format(workers_percentage))
+        
+        # Find workers which are counted as malicious users
+        workers_id_list = None
+        if 20 <= workers_percentage and workers_percentage < 40:
+            workers_id_list = np.array([0, 1])
+        elif 40 <= workers_percentage and workers_percentage < 50:
+            workers_id_list = np.array([0, 1, 2, 3])
+        elif 50 <= workers_percentage and workers_percentage < 60:
+            workers_id_list = np.array([0, 1, 2, 3, 4])
+        elif 60 <= workers_percentage and workers_percentage < 80:
+            workers_id_list = np.array([0, 1, 2, 3, 4, 5])
+        elif 80 <= workers_percentage and workers_percentage < 100:
+            workers_id_list = np.array([0, 1, 2, 3, 4, 5, 6, 7])
+        elif workers_percentage == 100:
+            workers_id_list = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        logging.debug("Affected workers: {}".format(workers_id_list))  
+        
         step = int(len(self.train_labels) / len(self.workers))
         for i in workers_id_list: 
-            logging.debug("-- Permute from index {} to {}".format(
+            logging.debug("-- Permute all labels from index {} to {}".format(
                 i * step, (i + 1) * step))
             self.train_labels[i * step:(i + 1) * step] = \
                         np.random.permutation(self.train_labels[i * step:(i + 1) * step])
 
-    def attack_permute_labels_collaborative(self, workers_id_list, data_percentage):
-        logging.info("ATTACK 2: Permute {} percentage of labels of the given workers: {}".format(data_percentage, workers_id_list))
+    def attack_permute_labels_collaborative(self, workers_percentage, data_percentage):
+        logging.info("ATTACK 2: Permute {} percentage of labels of the {} percentage of workers".format(data_percentage, workers_percentage))
         
+        # Find workers which are counted as malicious users
+        workers_id_list = None
+        if 20 <= workers_percentage and workers_percentage < 40:
+            workers_id_list = np.array([0, 1])
+        elif 40 <= workers_percentage and workers_percentage < 50:
+            workers_id_list = np.array([0, 1, 2, 3])
+        elif 50 <= workers_percentage and workers_percentage < 60:
+            workers_id_list = np.array([0, 1, 2, 3, 4])
+        elif 60 <= workers_percentage and workers_percentage < 80:
+            workers_id_list = np.array([0, 1, 2, 3, 4, 5])
+        elif 80 <= workers_percentage and workers_percentage < 100:
+            workers_id_list = np.array([0, 1, 2, 3, 4, 5, 6, 7])
+        elif workers_percentage == 100:
+            workers_id_list = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        logging.debug("Affected workers: {}".format(workers_id_list))        
+
         # Find labels which are going to be permuted base on the value of the percentage
         labels_to_be_changed = None
         if 20 <= data_percentage and data_percentage < 40:
             labels_to_be_changed = np.array([0, 1])
         elif 40 <= data_percentage and data_percentage < 60:
             labels_to_be_changed = np.array([0, 1, 2, 3])
+        # I tried to add an option for 50% changes in data but it is not 
+        # rasy with the current implementation.
         elif 60 <= data_percentage and data_percentage < 80:
             labels_to_be_changed = np.array([0, 1, 2, 3, 4, 5])
         elif 80 <= data_percentage and data_percentage < 100:
@@ -239,7 +274,7 @@ class FederatedLearning():
 
                 self.train_labels[labels_indexes[labels_to_be_changed[l]][indexes_first_digit]] = labels_to_be_changed[l + 1]
                 self.train_labels[labels_indexes[labels_to_be_changed[l + 1]][indexes_sec_digit]]= labels_to_be_changed[l]
-                    # labels_to_be_changed[l + 1], labels_to_be_changed[l]
+
 
     def train_workers(self, federated_train_loader, epoch):
         workers_opt = {}
@@ -383,7 +418,6 @@ class FederatedLearning():
             """
 
             workers_all_params = []
-            print()
             logging.info("Start the optimization....")
             workers_all_params.append(np.array([]).reshape(workers_params["worker0"][0].shape[0], 0))
             workers_all_params.append(np.array([]).reshape(workers_params["worker0"][1].shape[0], 0))
@@ -421,13 +455,13 @@ class FederatedLearning():
 
             for i in range(len(workers_all_params)):
                 logging.debug("Mean [{}]: {}".format(i, np.round(np.mean(workers_all_params[i],0) - np.mean(reference_layers[i],0),6)))
-                print()
+                logging.debug("")
 
             constraints = [0 <= W, W <= 1, sum(W) == 1]
             prob = cp.Problem(objective, constraints)
             result = prob.solve(solver=cp.MOSEK)
             logging.info(W.value)
-            print()
+            logging.info("")
             TO_FILE = '{} {}\n'.format(epoch, np.array2string(W.value).replace('\n',''))
             file.write(TO_FILE)
             # file.close()

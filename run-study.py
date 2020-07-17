@@ -1,5 +1,5 @@
 """
-Usage: run-study.py \n\t\t(--avg | --opt) \n\t\t--attack=<attack-type> \n\t\t[--mal-workers=<list-of-uesr-ids>] \n\t\t[--data-percentage=<data-percentage>]  \n\t\t--output-file=<output-filename>
+Usage: run-study.py \n\t\t(--avg | --opt) \n\t\t--attack=<attack-type> \n\t\t[--workers-percentage=<workers-percentage>] \n\t\t[--data-percentage=<data-percentage>]  \n\t\t--output-file=<output-filename>
 """
 from docopt import docopt
 from federated_learning.FederatedLearning import FederatedLearning
@@ -25,15 +25,15 @@ fl.create_server()
 fl.load_data()
 
 # Count the number of digits
-fl.count_digits()
+# fl.count_digits()
 
 logging.debug("Some sample data for user 1: {}".format(fl.train_labels[6000:6025]))
 
 if arguments['--attack'] == "1":
-    mal_users_list = ast.literal_eval(arguments['--mal-workers'])
+    mal_users_list = ast.literal_eval(arguments['--workers-percentage'])
     fl.attack_permute_labels_randomly(mal_users_list)
 elif arguments['--attack'] == "2":
-    mal_users_list = ast.literal_eval(arguments['--mal-workers'])
+    mal_users_list = ast.literal_eval(arguments['--workers-percentage'])
     data_percentage = int(arguments['--data-percentage'])
     a = fl.attack_permute_labels_collaborative(mal_users_list, 40)
 else:
@@ -49,9 +49,15 @@ for epoch in range(1, EPOCH_NUM + 1):
     fl.train_server(server_data_loader, epoch)
     fl.train_workers(train_data_loader, epoch)
     print()
-    W = fl.find_best_weights(epoch)
-    # W = [0.1] * 10
-
+    W = None
+    if arguments['--avg']:
+        W = [0.1] * 10
+    elif arguments['--opt']:
+        W = fl.find_best_weights(epoch)
+    else:
+        logging.error("Not expected this mode!")
+        exit(1)
+    
     # base model is meant nothing in this scenario
     fl.update_models(W, fl.server_model, fl.workers_model)
 
