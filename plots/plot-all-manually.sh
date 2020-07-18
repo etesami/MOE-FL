@@ -34,9 +34,17 @@
 # ./plot-main.sh test acc $FILE1 $FILE2 $FILE3 $FILE4 $FILE5 "$TITLE" $OUTPUT
 
 
+# DIR="data_tmp/"
+# FILE1=$DIR"09-non-cooperative-test.txt"
+# TITLE="Non-Cooperative Attack (Average vs. Weighted Average)"
+# OUTPUT="att1-avg-opt-test"
+# echo $OUTPUT
+# ./plot-main.sh nc-combined $FILE1 "$TITLE" $OUTPUT
+
+
 DIR="data_tmp/"
-FILE1=$DIR"09-non-cooperative-test.txt"
-TITLE="Non-Cooperative Attack (Average vs. Weighted Average)"
-OUTPUT="att1-avg-opt-test"
+FILE1=$DIR"09-cooperative-non-cop-test.txt"
+TITLE="Cooperative and Non-Cooperative Attack (Average vs. Weighted Average)"
+OUTPUT="att2-avg-opt-test"
 echo $OUTPUT
-./plot-main.sh nc-combined $FILE1 "$TITLE" $OUTPUT
+./plot-main.sh "cop-nc-combined" $FILE1 "$TITLE" $OUTPUT

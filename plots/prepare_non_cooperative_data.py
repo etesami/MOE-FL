@@ -22,7 +22,7 @@ for ff in FILES:
         f.close()
 
 with open(DIR + "09-non-cooperative-test.txt", 'w') as f:
-    f.write("- - AVG - Weighted AVG\n")
+    f.write('- - AVG - "Weighted AVG"\n')
     f.write("20% " + nums[0] + " AVG " + nums[4] + " Weighted AVG\n")
     f.write("40% " + nums[1] + " AVG " + nums[5] + " Weighted AVG\n")
     f.write("60% " + nums[2] + " AVG " + nums[6] + " Weighted AVG\n")

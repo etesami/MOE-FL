@@ -49,4 +49,15 @@ elif [ "$MODE" == "nc-combined" ]; then
     ps2pdf -dAutoRotatePages=/None -dEPSCrop $OUTPUT".ps"
     rm $OUTPUT".ps"
     echo $NEW_FILE_NAME
+
+elif [ "$MODE" == "cop-nc-combined" ]; then
+    if [[ ! -e $FILE1 ]]; then
+    echo "File(s) does not exist!"
+    exit 1
+    fi
+    gnuplot -persist -e "file1='$FILE1'" \
+        -e "figure_title='$TITLE'" -e "output_file='$OUTPUT'" gtest-combined-cop-noncop.gnu 
+    ps2pdf -dAutoRotatePages=/None -dEPSCrop $OUTPUT".ps"
+    rm $OUTPUT".ps"
+    echo $NEW_FILE_NAME
 fi
