@@ -33,19 +33,19 @@ if [[ -z "$ERR" ]]; then
 	  	exit 1
 	  fi
 		if [ "$1" == "test" ]; then
-            ./add-lines.sh $FILENAME1
-			FILENAME1_TMP=$FILENAME1".tmp"
-            ./add-lines.sh $FILENAME2
-			FILENAME2_TMP=$FILENAME2".tmp"
-			gnuplot -persist -e "filename1='$FILENAME1_TMP'" -e "filename2='$FILENAME2_TMP'" -e "figure_title='$TITLE'" -e "output_file='$OUTPUT_FILE'" -e "step_num=19" gtest-two-lines.gnu 
+         # ./add-lines.sh $FILENAME1
+			# FILENAME1=$FILENAME1".tmp"
+         # ./add-lines.sh $FILENAME2
+			# FILENAME2=$FILENAME2".tmp"
+			gnuplot -persist -e "filename1='$FILENAME1'" -e "filename2='$FILENAME2'" -e "figure_title='$TITLE'" -e "output_file='$OUTPUT_FILE'" -e "step_num=19" gtest-two-lines.gnu 
 
-            rm $FILENAME1_TMP $FILENAME2_TMP
+         # rm $FILENAME1 $FILENAME2
 
-            ps2pdf -dAutoRotatePages=/None -dEPSCrop $OUTPUT_FILE".ps"
-            rm $OUTPUT_FILE".ps"
-            NEW_FILE_NAME=`ls $OUTPUT_FILE".pdf" | tr -d '\'`
-            mv $OUTPUT_FILE".pdf" $NEW_FILE_NAME
-            echo $NEW_FILE_NAME
+         ps2pdf -dAutoRotatePages=/None -dEPSCrop $OUTPUT_FILE".ps"
+         rm $OUTPUT_FILE".ps"
+         # NEW_FILE_NAME=`ls $OUTPUT_FILE".pdf" | tr -d '\'`
+         # mv $OUTPUT_FILE".pdf" $NEW_FILE_NAME
+         echo $NEW_FILE_NAME
         fi
 else
     echo "Input format: <test> <fileName1> <fileName2> <title> <output-file-name>"
