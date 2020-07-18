@@ -23,23 +23,23 @@ DIR="data_tmp/"
 # FILE4=$DIR"03_attk1_opt60_test"
 # FILE5=$DIR"03_attk1_opt80_test"
 
-# TITLE="Non Cooperative Attack (Weighted Average)"
+# TITLE="Non Cooperative Attack (Proposed Approach)"
 # OUTPUT="att1-opt-test-loss"
 # echo $OUTPUT
 # ./plot-main.sh test loss $FILE1 $FILE2 $FILE3 $FILE4 $FILE5 "$TITLE" $OUTPUT
 
-# TITLE="Non Cooperative Attack (Weighted Average)"
+# TITLE="Non Cooperative Attack (Proposed Approach)"
 # OUTPUT="att1-opt-test-acc"
 # echo $OUTPUT
 # ./plot-main.sh test acc $FILE1 $FILE2 $FILE3 $FILE4 $FILE5 "$TITLE" $OUTPUT
 
-# # ## #############################
+# # # ## #############################
 
 
 # DIR="data_tmp/"
 # python prepare-non-cooperative-data.py
 # FILE1=$DIR"09-non-cooperative-test.txt"
-# TITLE="Non-Cooperative Attack (Average vs. Weighted Average)"
+# TITLE="Non-Cooperative Attack (Average vs. Proposed Approach)"
 # OUTPUT="att1-avg-opt-test"
 # echo $OUTPUT
 # ./plot-main.sh nc-combined $FILE1 "$TITLE" $OUTPUT
@@ -48,7 +48,7 @@ DIR="data_tmp/"
 # DIR="data_tmp/"
 # python prepare-cop-non-cop-data.py
 # FILE1=$DIR"09-cooperative-non-cop-test.txt"
-# TITLE="Cooperative and Non-Cooperative Attack (Average vs. Weighted Average)"
+# TITLE="Cooperative and Non-Cooperative Attack (Average vs. Proposed Approach)"
 # OUTPUT="att2-avg-opt-test"
 # echo $OUTPUT
 # ./plot-main.sh "cop-nc-combined" $FILE1 "$TITLE" $OUTPUT
@@ -66,7 +66,7 @@ echo $OUTPUT
 
 DIR="data_tmp/"
 FILE1=$DIR"09-workers-data-opt.txt"
-TITLE="Cooperative Attack (Weighted AVG)"
+TITLE="Cooperative Attack (Proposed Approach)"
 OUTPUT="att2-opt-workers-data"
 echo $OUTPUT
 ./plot-main.sh "workers-data" $FILE1 "$TITLE" $OUTPUT

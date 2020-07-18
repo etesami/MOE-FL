@@ -28,7 +28,7 @@ set title figure_title
 set grid ytics
 set xlabel 'Malicious Workers Percentage'
 set xrange [0:100]
-# set yrange [30:100]
+set yrange [50:100]
 set ylabel 'Accuracy' offset 1,0
 set xtics nomirror
 set ytics nomirror
@@ -36,11 +36,11 @@ set ytics nomirror
 set terminal postscript eps size 16cm,12cm enhanced color font 'Helvetica,18' linewidth 2.5
 set output output_file.".ps"
 
-title1="20% Data Permutation"
-title2="40% Data Permutation"
-title3="50% Data Permutation"
-title4="60% Data Permutation"
-title5="80% Data Permutation"
+title1="20% Data Alteration"
+title2="40% Data Alteration"
+title3="50% Data Alteration"
+title4="60% Data Alteration"
+title5="80% Data Alteration"
 # title1="Manupulated Data in Server"
 # title2="Pure Data in Server"
 plot file1 using 1:3:xtic(2) with linespoints ls 1 title title1, \

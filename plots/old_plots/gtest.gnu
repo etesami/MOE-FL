@@ -17,8 +17,8 @@ set ylabel 'Loss'
 set xtics nomirror
 set ytics nomirror
 
-set terminal postscript eps size 16cm,12cm enhanced color font 'Helvetica,13' linewidth 2.5
-set output filename.".ps"
+set terminal postscript eps size 16cm,12cm enhanced color font 'Helvetica,18' linewidth 2.5
+set output output_file.".ps"
 
 # set x2tics rotate by 55 right offset 2,2.5
 plot filename using 1:2 with linespoints ls 1 title "Loss", '' with labels point pt 7 offset char 3,2 notitle

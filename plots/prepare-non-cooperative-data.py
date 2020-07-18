@@ -24,9 +24,9 @@ for ff in FILES:
         f.close()
 
 with open(DIR + "09-non-cooperative-test.txt", 'w') as f:
-    f.write('- - AVG - "Weighted AVG"\n')
-    f.write("20% " + nums[0] + " AVG " + nums[5] + " Weighted AVG\n")
-    f.write("40% " + nums[1] + " AVG " + nums[6] + " Weighted AVG\n")
-    f.write("50% " + nums[2] + " AVG " + nums[7] + " Weighted AVG\n")
-    f.write("60% " + nums[3] + " AVG " + nums[8] + " Weighted AVG\n")
-    f.write("80% " + nums[4] + " AVG " + nums[9] + " Weighted AVG\n")
+    f.write('- - AVG - "Proposed Approach"\n')
+    f.write("20% " + nums[0] + " AVG " + nums[5] + " Proposed Approach\n")
+    f.write("40% " + nums[1] + " AVG " + nums[6] + " Proposed Approach\n")
+    f.write("50% " + nums[2] + " AVG " + nums[7] + " Proposed Approach\n")
+    f.write("60% " + nums[3] + " AVG " + nums[8] + " Proposed Approach\n")
+    f.write("80% " + nums[4] + " AVG " + nums[9] + " Proposed Approach\n")
