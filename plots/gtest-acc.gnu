@@ -23,7 +23,7 @@ set style line 5 \
     pointtype 7 pointsize 1.5
 
 set title figure_title
-set key bottom box height 1
+set key bottom
 
 set grid ytics
 set xlabel 'Epoch'
@@ -36,11 +36,11 @@ set ytics nomirror
 set terminal postscript eps size 16cm,12cm enhanced color font 'Helvetica,18' linewidth 2.5
 set output output_file.".ps"
 
-title1="20% Data Permutation"
-title2="40% Data Permutation"
-title3="50% Data Permutation"
-title4="60% Data Permutation"
-title5="80% Data Permutation"
+title1="20%"
+title2="40%"
+title3="50%"
+title4="60%"
+title5="80%"
 # title1="Manupulated Data in Server"
 # title2="Pure Data in Server"
 plot file1 using 1:3 with linespoints ls 1 title title1, \
