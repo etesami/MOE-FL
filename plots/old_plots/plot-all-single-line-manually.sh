@@ -1,20 +1,155 @@
 #!/bin/bash
 
-DIR="data_tmp/"
+DIR="../data_tmp/"
 PRFX1="01_avg_"
-PRFX2="02_opt_"
-PRFX3="03_att1_avg_"
-PRFX4="04_att1_opt_"
+PRFX2="01_opt_"
+PRFX3="02_attk1_avg"
+PRFX4="03_attk1_opt"
 
-PRFX5="05_att1_avg"
-PRFX6="05_att1_opt"
+PRFX5="04_attk2_avg"
+PRFX6="05_attk2_opt"
 
-PRFX7="07_att2_avg_"
+PER="20"
+FILE=$DIR$PRFX4$PER"_weights"
+TITLE='Attack 1, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
 
-PRFX8="07_att2_opt_"
-PRFX9="08_att3_avg_"
-PRFX10="08_att3_opt_"
+PER="40"
+FILE=$DIR$PRFX4$PER"_weights"
+TITLE='Attack 1, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
 
+PER="50"
+FILE=$DIR$PRFX4$PER"_weights"
+TITLE='Attack 1, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+PER="60"
+FILE=$DIR$PRFX4$PER"_weights"
+TITLE='Attack 1, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+PER="80"
+FILE=$DIR$PRFX4$PER"_weights"
+TITLE='Attack 1, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+#### -----
+
+PER="20"
+DATA="20"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="40"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="60"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="80"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+#### -----
+
+PER="40"
+DATA="20"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="40"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="60"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="80"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+#### -----
+
+PER="50"
+DATA="20"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="40"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="60"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="80"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+#### -----
+
+PER="60"
+DATA="20"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="40"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="60"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="80"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+#### -----
+
+PER="80"
+DATA="20"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="40"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="60"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+DATA="80"
+FILE=$DIR$PRFX6$PER"_"$DATA"_weights"
+TITLE='Attack 2, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers \\& '$DATA'% Data Alteration'
+echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
+
+############################### old plots
 
 # FILE=$DIR$PRFX1"train"
 # echo $FILE && ./plot.sh train $FILE
