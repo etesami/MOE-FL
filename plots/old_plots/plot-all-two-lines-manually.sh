@@ -16,161 +16,161 @@ FILE2=$DIR$PRFX2"test"
 TITLE="No Maliciou Worker"
 echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER="20"
-FILE1=$DIR$PRFX5$PER"_test"
-FILE2=$DIR$PRFX6$PER"_test"
-TITLE=$PER"% Maliciou Workers"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER="20"
+# FILE1=$DIR$PRFX5$PER"_test"
+# FILE2=$DIR$PRFX6$PER"_test"
+# TITLE=$PER"% Maliciou Workers"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER="40"
-FILE1=$DIR$PRFX5$PER"_test"
-FILE2=$DIR$PRFX6$PER"_test"
-TITLE=$PER"% Maliciou Workers"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER="40"
+# FILE1=$DIR$PRFX5$PER"_test"
+# FILE2=$DIR$PRFX6$PER"_test"
+# TITLE=$PER"% Maliciou Workers"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER="60"
-FILE1=$DIR$PRFX5$PER"_test"
-FILE2=$DIR$PRFX6$PER"_test"
-TITLE=$PER"% Maliciou Workers"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER="60"
+# FILE1=$DIR$PRFX5$PER"_test"
+# FILE2=$DIR$PRFX6$PER"_test"
+# TITLE=$PER"% Maliciou Workers"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER="80"
-FILE1=$DIR$PRFX5$PER"_test"
-FILE2=$DIR$PRFX6$PER"_test"
-TITLE=$PER"% Maliciou Workers"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER="80"
+# FILE1=$DIR$PRFX5$PER"_test"
+# FILE2=$DIR$PRFX6$PER"_test"
+# TITLE=$PER"% Maliciou Workers"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
 
-# =====================
-PER="20"
-PER_DATA="20"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# # =====================
+# PER="20"
+# PER_DATA="20"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER_DATA="40"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER_DATA="40"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER_DATA="60"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER_DATA="60"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER_DATA="80"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
-
-# =======================
-PER="40"
-PER_DATA="20"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
-
-PER_DATA="40"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
-
-PER_DATA="60"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
-
-PER_DATA="80"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER_DATA="80"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
 # # =======================
-PER="50"
-PER_DATA="20"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER="40"
+# PER_DATA="20"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER_DATA="40"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER_DATA="40"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER_DATA="60"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER_DATA="60"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER_DATA="80"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER_DATA="80"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+
+# # # =======================
+# PER="50"
+# PER_DATA="20"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+
+# PER_DATA="40"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+
+# PER_DATA="60"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+
+# PER_DATA="80"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
 
-# # =======================
-PER="60"
-PER_DATA="20"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# # # =======================
+# PER="60"
+# PER_DATA="20"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER_DATA="40"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER_DATA="40"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER_DATA="60"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER_DATA="60"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER_DATA="80"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER_DATA="80"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-# ========================
-PER="80"
-PER_DATA="20"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# # ========================
+# PER="80"
+# PER_DATA="20"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER_DATA="40"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER_DATA="40"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER_DATA="60"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER_DATA="60"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
-PER_DATA="80"
-FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
-FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
-TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
-echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
+# PER_DATA="80"
+# FILE1=$DIR$PRFX7$PER"_"$PER_DATA"_test"
+# FILE2=$DIR$PRFX8$PER"_"$PER_DATA"_test"
+# TITLE="$PER% Maliciou Workers ($PER_DATA% Data Alteration)"
+# echo $FILE1" "$FILE2 && ./plot-two-lines.sh test $FILE1 $FILE2 "$TITLE" $FILE1
 
 
 # ==============================

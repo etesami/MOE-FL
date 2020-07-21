@@ -1,6 +1,6 @@
 #!/usr/local/bin/bash
 
-DIR="data_tmp/"
+# DIR="data_tmp/"
 # FILE1=$DIR"02_attk1_avg20_test"
 # FILE2=$DIR"02_attk1_avg40_test"
 # FILE3=$DIR"02_attk1_avg50_test"
@@ -33,6 +33,41 @@ DIR="data_tmp/"
 # echo $OUTPUT
 # ./plot-main.sh test acc $FILE1 $FILE2 $FILE3 $FILE4 $FILE5 "$TITLE" $OUTPUT
 
+
+
+###################
+
+DIR="data_tmp/"
+FILE1=$DIR"04_attk2_avg20_100_test"
+FILE2=$DIR"04_attk2_avg50_100_test"
+FILE3=$DIR"04_attk2_avg80_100_test"
+
+TITLE="Cooperative Attack (Average)"
+OUTPUT="att2-avg-test-loss"
+echo $OUTPUT
+./plot-main.sh test-cop loss $FILE1 $FILE2 $FILE3 "$TITLE" $OUTPUT
+
+TITLE="Cooperative Attack (Average)"
+OUTPUT="att2-avg-test-acc"
+echo $OUTPUT
+./plot-main.sh test-cop acc $FILE1 $FILE2 $FILE3 "$TITLE" $OUTPUT
+
+
+
+FILE1=$DIR"05_attk2_opt20_100_test"
+FILE2=$DIR"05_attk2_opt50_100_test"
+FILE3=$DIR"05_attk2_opt80_100_test"
+
+TITLE="Cooperative Attack (Proposed Approach)"
+OUTPUT="att2-opt-test-loss"
+echo $OUTPUT
+./plot-main.sh test-cop loss $FILE1 $FILE2 $FILE3 "$TITLE" $OUTPUT
+
+TITLE="Cooperative Attack (Proposed Approach)"
+OUTPUT="att2-opt-test-acc"
+echo $OUTPUT
+./plot-main.sh test-cop acc $FILE1 $FILE2 $FILE3 "$TITLE" $OUTPUT
+
 # # # ## #############################
 
 
@@ -55,18 +90,21 @@ DIR="data_tmp/"
 
 
 
-python prepare-workers-vs-data-data.py
 
-DIR="data_tmp/"
-FILE1=$DIR"09-workers-data-avg.txt"
-TITLE="Cooperative Attack (AVG)"
-OUTPUT="att2-avg-workers-data"
-echo $OUTPUT
-./plot-main.sh "workers-data" $FILE1 "$TITLE" $OUTPUT
 
-DIR="data_tmp/"
-FILE1=$DIR"09-workers-data-opt.txt"
-TITLE="Cooperative Attack (Proposed Approach)"
-OUTPUT="att2-opt-workers-data"
-echo $OUTPUT
-./plot-main.sh "workers-data" $FILE1 "$TITLE" $OUTPUT
+
+# python prepare-workers-vs-data-data.py
+
+# DIR="data_tmp/"
+# FILE1=$DIR"09-workers-data-avg.txt"
+# TITLE="Cooperative Attack (AVG)"
+# OUTPUT="att2-avg-workers-data"
+# echo $OUTPUT
+# ./plot-main.sh "workers-data" $FILE1 "$TITLE" $OUTPUT
+
+# DIR="data_tmp/"
+# FILE1=$DIR"09-workers-data-opt.txt"
+# TITLE="Cooperative Attack (Proposed Approach)"
+# OUTPUT="att2-opt-workers-data"
+# echo $OUTPUT
+# ./plot-main.sh "workers-data" $FILE1 "$TITLE" $OUTPUT
