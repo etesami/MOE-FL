@@ -2,6 +2,7 @@
 #
 # Usage: plot-main.sh MODE TYPE FILE1 FILE2 FILE3 FILE4 FILE5 TITLE OUTPUT
 #        plot-main.sh MODE FILE1 TITLE OUTPUT
+#        plot-main.sh MODE TYPE FILE1 FILE2 FILE3 TITLE OUTPUT
 #
 #
 source docopts.sh --auto "$@"
@@ -33,6 +34,25 @@ if [ "$MODE" == "test" ]; then
         gnuplot -persist -e "file1='$FILE1'" -e "file2='$FILE2'" \
         -e "file3='$FILE3'" -e "file4='$FILE4'" -e "file5='$FILE5'" \
         -e "figure_title='$TITLE'" -e "output_file='$OUTPUT'" -e "step_num=19" gtest-acc.gnu 
+    fi
+
+    ps2pdf -dAutoRotatePages=/None -dEPSCrop $OUTPUT".ps"
+    rm $OUTPUT".ps"
+    echo $NEW_FILE_NAME
+
+elif [ "$MODE" == "test-cop" ]; then
+    if [[ ! -e $FILE1 || ! -e $FILE2 || ! -e $FILE3 ]]; then
+    echo "Files does not exist!"
+    exit 1
+    fi
+    if [[ "$TYPE" == "loss" ]]; then
+        gnuplot -persist -e "file1='$FILE1'" \
+        -e "file2='$FILE2'" -e "file3='$FILE3'" \
+        -e "figure_title='$TITLE'" -e "output_file='$OUTPUT'" -e "step_num=19" gtest-loss-cop.gnu 
+    elif [[ "$TYPE" == "acc" ]]; then
+        gnuplot -persist -e "file1='$FILE1'" \
+        -e "file2='$FILE2'" -e "file3='$FILE3'" \
+        -e "figure_title='$TITLE'" -e "output_file='$OUTPUT'" -e "step_num=19" gtest-acc-cop.gnu 
     fi
 
     ps2pdf -dAutoRotatePages=/None -dEPSCrop $OUTPUT".ps"
