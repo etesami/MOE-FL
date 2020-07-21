@@ -25,7 +25,7 @@ if [ "$1" == "train" ]; then
 		echo "Seems modified file was not created!"
 		exit 1
 	fi
-	gnuplot -persist -e "filename='$FILENAME_TMP'" -e "output=$OUTPUT" -e "step_num=94" gtrain.gnu 
+	gnuplot -persist -e "filename='$FILENAME_TMP'" -e "output_file=$OUTPUT" -e "step_num=94" gtrain.gnu 
 	rm $FILENAME_TMP
 elif [ "$1" == "trainserv" ]; then
 	./../add-lines.sh $FILENAME
@@ -34,10 +34,10 @@ elif [ "$1" == "trainserv" ]; then
 		echo "Seems modified file was not created!"
 		exit 1
 	fi
-	gnuplot -persist -e "filename='$FILENAME_TMP'" -e "output='$OUTPUT'" -e "step_num=19" gtrain.gnu 
+	gnuplot -persist -e "filename='$FILENAME_TMP'" -e "output_file='$OUTPUT'" -e "step_num=19" gtrain.gnu 
 	rm $FILENAME_TMP
 else
-	gnuplot -persist -e "filename='$FILENAME_TMP'" -e "output='$OUTPUT'" -e "step_num=19" gtest.gnu 
+	gnuplot -persist -e "filename='$FILENAME'" -e "output_file='$OUTPUT'" -e "step_num=19" gtest.gnu 
 fi
 ps2pdf -dAutoRotatePages=/None -dEPSCrop $OUTPUT".ps"
 rm $OUTPUT".ps"

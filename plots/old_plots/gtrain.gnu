@@ -1,5 +1,5 @@
 set terminal postscript eps size 18cm,12cm enhanced color font 'Helvetica,20' linewidth 3
-set output output.".ps"
+set output output_file.".ps"
 
 set encoding utf8
 
