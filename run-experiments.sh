@@ -3,7 +3,7 @@
 # SCREENNAME="study1"
 # screen -dmS $SCREENNAME
 
-# # ################################  NO ATTACK
+# # # ################################  NO ATTACK
 
 # ## 01_avg_
 # MODE="avg"
@@ -27,16 +27,16 @@
 # # ################################  ATTACK 1
 
 SCREENNAME="study2"
-screen -dmS $SCREENNAME
+# screen -dmS $SCREENNAME
 
 ATTK="1"
-# MODE="avg"
+MODE="avg"
 
 # ## 02_attk1_avg20_
 # USRS="20"
 # OUTPUT="02_attk"$ATTK"_"$MODE$USRS
 # echo $OUTPUT
-# TIME="50"
+# TIME="10"
 # screen -S $SCREENNAME -X screen -t $OUTPUT
 # screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # "{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
@@ -45,7 +45,7 @@ ATTK="1"
 # USRS="40"
 # OUTPUT="02_attk"$ATTK"_"$MODE$USRS
 # echo $OUTPUT
-# TIME="50"
+# TIME="10"
 # screen -S $SCREENNAME -X screen -t $OUTPUT
 # screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # "{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
@@ -54,14 +54,14 @@ ATTK="1"
 # USRS="50"
 # OUTPUT="02_attk"$ATTK"_"$MODE$USRS
 # echo $OUTPUT
-# TIME="300"
+# TIME="400"
 # screen -S $SCREENNAME -X screen -t $OUTPUT
 # screen -S $SCREENNAME -p $OUTPUT -X stuff "{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
 
 # USRS="60"
 # OUTPUT="02_attk"$ATTK"_"$MODE$USRS
 # echo $OUTPUT
-# TIME="350"
+# TIME="300"
 # screen -S $SCREENNAME -X screen -t $OUTPUT
 # screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # "{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
@@ -69,7 +69,7 @@ ATTK="1"
 # USRS="80"
 # OUTPUT="02_attk"$ATTK"_"$MODE$USRS
 # echo $OUTPUT
-# TIME="750"
+# TIME="700"
 # screen -S $SCREENNAME -X screen -t $OUTPUT
 # screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # "{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
@@ -77,18 +77,18 @@ ATTK="1"
 # USRS="100"
 # OUTPUT="02_attk"$ATTK"_"$MODE$USRS
 # echo $OUTPUT
-# TIME="1"
+# TIME="1000"
 # screen -S $SCREENNAME -X screen -t $OUTPUT
 # screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # "{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
 
-# ##############
-MODE="opt"
+# # ##############
+# MODE="opt"
 
 # USRS="20"
 # OUTPUT="03_attk"$ATTK"_"$MODE$USRS
 # echo $OUTPUT
-# TIME="1150"
+# TIME="1100"
 # screen -S $SCREENNAME -X screen -t $OUTPUT
 # screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # "{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
@@ -96,23 +96,23 @@ MODE="opt"
 # USRS="40"
 # OUTPUT="03_attk"$ATTK"_"$MODE$USRS
 # echo $OUTPUT
-# TIME="1150"
+# TIME="1100"
 # screen -S $SCREENNAME -X screen -t $OUTPUT
 # screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # "{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
 
-USRS="50"
-OUTPUT="03_attk"$ATTK"_"$MODE$USRS
-echo $OUTPUT
-TIME="1500"
-screen -S $SCREENNAME -X screen -t $OUTPUT
-screen -S $SCREENNAME -p $OUTPUT -X stuff \
-"{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
+# USRS="50"
+# OUTPUT="03_attk"$ATTK"_"$MODE$USRS
+# echo $OUTPUT
+# TIME="1600"
+# screen -S $SCREENNAME -X screen -t $OUTPUT
+# screen -S $SCREENNAME -p $OUTPUT -X stuff \
+# "{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
 
 # USRS="60"
 # OUTPUT="03_attk"$ATTK"_"$MODE$USRS
 # echo $OUTPUT
-# TIME="300"
+# TIME="1600"
 # screen -S $SCREENNAME -X screen -t $OUTPUT
 # screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # "{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
@@ -120,7 +120,7 @@ screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # USRS="80"
 # OUTPUT="03_attk"$ATTK"_"$MODE$USRS
 # echo $OUTPUT
-# TIME="1850"
+# TIME="2100"
 # screen -S $SCREENNAME -X screen -t $OUTPUT
 # screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # "{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
@@ -128,7 +128,7 @@ screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # USRS="100"
 # OUTPUT="03_attk"$ATTK"_"$MODE$USRS
 # echo $OUTPUT
-# TIME="550"
+# TIME="2100"
 # screen -S $SCREENNAME -X screen -t $OUTPUT
 # screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # "{ sleep $TIME; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
