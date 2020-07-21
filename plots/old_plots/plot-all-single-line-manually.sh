@@ -13,8 +13,8 @@ PRFX6="05_attk2_opt"
 # FILE=$DIR$PRFX6"80_100_weights"
 # TITLE='Attack 1, Workers Weights (Proposed Approach)\n'$PER'% Malicious Workers'
 # echo $FILE && ./plot-weight.sh $FILE "$TITLE" $FILE
-FILE=$DIR$PRFX6"80_100_train_server"
-echo $FILE && ./plot.sh trainserv $FILE $FILE
+FILE=$DIR$PRFX6"80_100_test"
+echo $FILE && ./plot.sh test $FILE $FILE
 
 # FILE=$DIR$PRFX4"80_train_server"
 # echo $FILE && ./plot.sh trainserv $FILE $FILE
