@@ -1,28 +1,31 @@
 
+set terminal postscript eps size 16cm,12cm enhanced color font 'Helvetica,24' linewidth 2
+set output output_file.".ps"
+
 set encoding utf8
 
 set style line 1 \
     linecolor rgb '#0060ad' \
-    lt 1 linewidth 2 \
-    pointtype 7 pointsize 1.5
+    lt 1 linewidth 6 \
+    pointtype 7 pointsize 3
 set style line 2 \
     linecolor rgb '#D32636' \
-    dt 2 linewidth 2 \
-    pointtype 7 pointsize 1.5
+    dt 2 linewidth 6 \
+    pointtype 7 pointsize 3
 set style line 3 \
     linecolor rgb '#048226' \
-    dt 3 linewidth 2 \
-    pointtype 7 pointsize 1.5
+    dt 3 linewidth 6 \
+    pointtype 7 pointsize 3
 set style line 4 \
     linecolor rgb '#29001e' \
-    dt 4 linewidth 2 \
-    pointtype 7 pointsize 1.5
+    dt 4 linewidth 6 \
+    pointtype 7 pointsize 3
 set style line 5 \
     linecolor rgb '#bf008c' \
-    dt 7 linewidth 2 \
-    pointtype 7 pointsize 1.5
+    dt 7 linewidth 6 \
+    pointtype 7 pointsize 3
 
-set title figure_title
+# set title figure_title
 set key bottom
 
 set grid ytics
@@ -33,8 +36,7 @@ set ylabel 'Accuracy' offset 1,0
 set xtics nomirror
 set ytics nomirror
 
-set terminal postscript eps size 16cm,12cm enhanced color font 'Helvetica,18' linewidth 2.5
-set output output_file.".ps"
+
 
 title1="20%"
 title2="40%"
