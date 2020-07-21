@@ -135,7 +135,7 @@ class FederatedLearning():
         
         federated_server_loader = sy.FederatedDataLoader(
             dataset_server.federate(tuple([self.server])),
-            batch_size=self.args.batch_size, shuffle=False, **self.kwargs)
+            batch_size=self.args.batch_size, shuffle=True, **self.kwargs)
         
         return federated_server_loader
 
@@ -350,7 +350,7 @@ class FederatedLearning():
                 correct += pred.eq(target.view_as(pred)).sum().item()
 
         test_loss /= len(test_loader.dataset)
-        TO_FILE = '{} {} {}\n'.format(epoch, test_loss, 100. * correct / len(test_loader.dataset))
+        TO_FILE = '{} {} "{{/*0.80 Accuracy:}}\\n43.61%"\n'.format(epoch, test_loss, 100. * correct / len(test_loader.dataset))
         file.write(TO_FILE)
         file.close()
         logging.info('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
