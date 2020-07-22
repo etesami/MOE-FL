@@ -350,7 +350,7 @@ class FederatedLearning():
                 correct += pred.eq(target.view_as(pred)).sum().item()
 
         test_loss /= len(test_loader.dataset)
-        TO_FILE = '{} {} "{{/*0.80 Accuracy:}}\\n{}% {}"\n'.format(
+        TO_FILE = '{} {} "{{/*0.80 Accuracy:}}\\n{}%" {}\n'.format(
             epoch, test_loss, 
             100. * correct / len(test_loader.dataset),
             100. * correct / len(test_loader.dataset))
