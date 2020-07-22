@@ -20,7 +20,7 @@ for ff in FILES:
     with open(DIR + ff, 'r') as f:
         print("Working on " + ff)
         lines = f.readlines()
-        nums.append(lines[4].split()[2])
+        nums.append(lines[4].split('"')[2].strip())
         f.close()
 
 with open(DIR + "09-non-cooperative-test.txt", 'w') as f:

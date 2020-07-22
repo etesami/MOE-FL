@@ -38,16 +38,16 @@ set ytics nomirror
 
 
 title1="20%"
-title2="50%"
-title3="80%"
-# title4="60%"
-# title5="80%"
+title2="40%"
+title3="50%"
+title4="60%"
+title5="80%"
 # title1="Manupulated Data in Server"
 # title2="Pure Data in Server"
 plot file1 using 1:2 with linespoints ls 1 title title1, \
 file2 using 1:2 with linespoints ls 2 title title2, \
-file3 using 1:2 with linespoints ls 4 title title3
-# file5 using 1:2 with linespoints ls 5 title title5,
+file3 using 1:2 with linespoints ls 3 title title3, \
+file4 using 1:2 with linespoints ls 4 title title4, \
+file5 using 1:2 with linespoints ls 5 title title5,
 
-# file3 using 1:2 with linespoints ls 3 title title3, \
 # replot

@@ -48,10 +48,12 @@ elif [ "$MODE" == "test-cop" ]; then
     if [[ "$TYPE" == "loss" ]]; then
         gnuplot -persist -e "file1='$FILE1'" \
         -e "file2='$FILE2'" -e "file3='$FILE3'" \
+        -e "file4='$FILE4'" -e "file5='$FILE5'" \
         -e "figure_title='$TITLE'" -e "output_file='$OUTPUT'" -e "step_num=19" gtest-loss-cop.gnu 
     elif [[ "$TYPE" == "acc" ]]; then
         gnuplot -persist -e "file1='$FILE1'" \
         -e "file2='$FILE2'" -e "file3='$FILE3'" \
+        -e "file4='$FILE4'" -e "file5='$FILE5'" \
         -e "figure_title='$TITLE'" -e "output_file='$OUTPUT'" -e "step_num=19" gtest-acc-cop.gnu 
     fi
 
@@ -70,13 +72,13 @@ elif [ "$MODE" == "nc-combined" ]; then
     rm $OUTPUT".ps"
     echo $NEW_FILE_NAME
 
-elif [ "$MODE" == "cop-nc-combined" ]; then
+elif [ "$MODE" == "cop-combined" ]; then
     if [[ ! -e $FILE1 ]]; then
     echo "File(s) does not exist!"
     exit 1
     fi
     gnuplot -persist -e "file1='$FILE1'" \
-        -e "figure_title='$TITLE'" -e "output_file='$OUTPUT'" gtest-combined-cop-noncop.gnu 
+        -e "figure_title='$TITLE'" -e "output_file='$OUTPUT'" gtest-combined-cop.gnu 
     ps2pdf -dAutoRotatePages=/None -dEPSCrop $OUTPUT".ps"
     rm $OUTPUT".ps"
     echo $NEW_FILE_NAME

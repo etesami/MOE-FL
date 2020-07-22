@@ -35,40 +35,44 @@
 
 
 
-###################
+# ###################
 
-DIR="data_tmp/"
-FILE1=$DIR"04_attk2_avg20_100_test"
-FILE2=$DIR"04_attk2_avg50_100_test"
-FILE3=$DIR"04_attk2_avg80_100_test"
+# DIR="data_tmp/"
+# FILE1=$DIR"04_attk2_avg20_100_test"
+# FILE2=$DIR"04_attk2_avg40_100_test"
+# FILE3=$DIR"04_attk2_avg50_100_test"
+# FILE4=$DIR"04_attk2_avg60_100_test"
+# FILE5=$DIR"04_attk2_avg80_100_test"
 
-TITLE="Cooperative Attack (Average)"
-OUTPUT="att2-avg-test-loss"
-echo $OUTPUT
-./plot-main.sh test-cop loss $FILE1 $FILE2 $FILE3 "$TITLE" $OUTPUT
+# TITLE="Cooperative Attack (Average)"
+# OUTPUT="att2-avg-test-loss"
+# echo $OUTPUT
+# ./plot-main.sh test-cop loss $FILE1 $FILE2 $FILE3 $FILE4 $FILE5 "$TITLE" $OUTPUT
 
-TITLE="Cooperative Attack (Average)"
-OUTPUT="att2-avg-test-acc"
-echo $OUTPUT
-./plot-main.sh test-cop acc $FILE1 $FILE2 $FILE3 "$TITLE" $OUTPUT
+# TITLE="Cooperative Attack (Average)"
+# OUTPUT="att2-avg-test-acc"
+# echo $OUTPUT
+# ./plot-main.sh test-cop acc $FILE1 $FILE2 $FILE3 $FILE4 $FILE5 "$TITLE" $OUTPUT
 
 
 
-FILE1=$DIR"05_attk2_opt20_100_test"
-FILE2=$DIR"05_attk2_opt50_100_test"
-FILE3=$DIR"05_attk2_opt80_100_test"
+# FILE1=$DIR"05_attk2_opt20_100_test"
+# FILE2=$DIR"05_attk2_opt40_100_test"
+# FILE3=$DIR"05_attk2_opt50_100_test"
+# FILE4=$DIR"05_attk2_opt60_100_test"
+# FILE5=$DIR"05_attk2_opt80_100_test"
 
-TITLE="Cooperative Attack (Proposed Approach)"
-OUTPUT="att2-opt-test-loss"
-echo $OUTPUT
-./plot-main.sh test-cop loss $FILE1 $FILE2 $FILE3 "$TITLE" $OUTPUT
+# TITLE="Cooperative Attack (Proposed Approach)"
+# OUTPUT="att2-opt-test-loss"
+# echo $OUTPUT
+# ./plot-main.sh test-cop loss $FILE1 $FILE2 $FILE3 $FILE4 $FILE5 "$TITLE" $OUTPUT
 
-TITLE="Cooperative Attack (Proposed Approach)"
-OUTPUT="att2-opt-test-acc"
-echo $OUTPUT
-./plot-main.sh test-cop acc $FILE1 $FILE2 $FILE3 "$TITLE" $OUTPUT
+# TITLE="Cooperative Attack (Proposed Approach)"
+# OUTPUT="att2-opt-test-acc"
+# echo $OUTPUT
+# ./plot-main.sh test-cop acc $FILE1 $FILE2 $FILE3 $FILE4 $FILE5 "$TITLE" $OUTPUT
 
-# # # ## #############################
+# # ## #############################
 
 
 # DIR="data_tmp/"
@@ -80,13 +84,13 @@ echo $OUTPUT
 # ./plot-main.sh nc-combined $FILE1 "$TITLE" $OUTPUT
 
 
-# DIR="data_tmp/"
-# python prepare-cop-non-cop-data.py
-# FILE1=$DIR"09-cooperative-non-cop-test.txt"
-# TITLE="Cooperative and Non-Cooperative Attack (Average vs. Proposed Approach)"
-# OUTPUT="att2-avg-opt-test"
-# echo $OUTPUT
-# ./plot-main.sh "cop-nc-combined" $FILE1 "$TITLE" $OUTPUT
+DIR="data_tmp/"
+python prepare-cop-data.py
+FILE1=$DIR"09-cooperative-test.txt"
+TITLE="Cooperative and Non-Cooperative Attack (Average vs. Proposed Approach)"
+OUTPUT="att2-avg-opt-test"
+echo $OUTPUT
+./plot-main.sh "cop-combined" $FILE1 "$TITLE" $OUTPUT
 
 
 
