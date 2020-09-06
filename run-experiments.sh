@@ -3,7 +3,7 @@
 
 
 SCREENNAME="study1"
-# screen -dmS $SCREENNAME
+screen -dmS $SCREENNAME
 
 # # # ################################  NO ATTACK
 
@@ -31,16 +31,16 @@ SCREENNAME="study1"
 # # SCREENNAME="study2"
 # # screen -dmS $SCREENNAME
 
-# ## 02_attk1_avg20_
-# ATTK="1"; MODE="avg"
-# USRS="20"
-# TIME="400"
-# OUTPUT="02_attk"$ATTK"_"$MODE$USRS
-# echo $OUTPUT
+## 02_attk1_avg20_
+ATTK="1"; MODE="avg"
+USRS="20"
+TIME="5"
+OUTPUT="02_attk"$ATTK"_"$MODE$USRS
+echo $OUTPUT
 
-# screen -S $SCREENNAME -X screen -t $OUTPUT
-# screen -S $SCREENNAME -p $OUTPUT -X stuff \
-# "{ sleep $TIME; rm -f ~/FederatedLearning/data_tmp/$OUTPUT*; rm -f ~/FederatedLearning/data_tmp/$OUTPUT*; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
+screen -S $SCREENNAME -X screen -t $OUTPUT
+screen -S $SCREENNAME -p $OUTPUT -X stuff \
+"{ sleep $TIME; rm -f ~/FederatedLearning/data_tmp/$OUTPUT*; rm -f ~/FederatedLearning/data_tmp/$OUTPUT*; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --output-file=$OUTPUT; date; }^M"
 
 # ATTK="1"; MODE="avg"
 # USRS="40"
@@ -399,15 +399,15 @@ SCREENNAME="study1"
 # screen -S $SCREENNAME -p $OUTPUT -X stuff \
 # "{ sleep $TIME; rm -f ~/FederatedLearning/data_tmp/$OUTPUT*; rm -f ~/FederatedLearning/data_tmp/$OUTPUT*; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --data-percentage=$DATA --output-file=$OUTPUT; date; }^M"
 
-ATTK="2"; MODE="avg"
-USRS="40"
-DATA="100"
-TIME="280"
-OUTPUT="04_attk"$ATTK"_"$MODE$USRS"_"$DATA
-echo $OUTPUT
-screen -S $SCREENNAME -X screen -t $OUTPUT
-screen -S $SCREENNAME -p $OUTPUT -X stuff \
-"{ sleep $TIME; rm -f ~/FederatedLearning/data_tmp/$OUTPUT*; rm -f ~/FederatedLearning/data_tmp/$OUTPUT*; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --data-percentage=$DATA --output-file=$OUTPUT; date; }^M"
+# ATTK="2"; MODE="avg"
+# USRS="40"
+# DATA="100"
+# TIME="280"
+# OUTPUT="04_attk"$ATTK"_"$MODE$USRS"_"$DATA
+# echo $OUTPUT
+# screen -S $SCREENNAME -X screen -t $OUTPUT
+# screen -S $SCREENNAME -p $OUTPUT -X stuff \
+# "{ sleep $TIME; rm -f ~/FederatedLearning/data_tmp/$OUTPUT*; rm -f ~/FederatedLearning/data_tmp/$OUTPUT*; start="'`date`'"; python run-study.py --$MODE --attack=$ATTK --workers-percentage=$USRS --data-percentage=$DATA --output-file=$OUTPUT; date; }^M"
 
 # ATTK="2"; MODE="avg"
 # USRS="50"
