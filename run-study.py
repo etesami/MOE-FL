@@ -16,7 +16,7 @@ MNIST_PATH = "/home/ubuntu/data/MNIST/processed_manual"
 EMNIST_PATH = "/home/ubuntu/data/EMNIST/processed"
 FEMNIST_PATH="/home/ubuntu/leaf/data/femnist/data"
 NUM_TRAIN_WORKERS = 30 # Total number of users which participate in training in each round
-EPOCH_NUM = 5
+EPOCH_NUM = 1
 ROUNDS = 1
 
 fl = FederatedLearning(
@@ -33,8 +33,6 @@ if fl.write_to_file:
 fl.load_femnist_train(FEMNIST_PATH)
 fl.load_femnist_test(FEMNIST_PATH)
 logging.debug("Some sample data for user {}: {}".format(fl.workers_id[0], fl.train_data[fl.workers_id[0]]['y'][0:15]))
-print(fl.workers_id[0])
-print(len(fl.train_data[fl.workers_id[0]]['y']))
 
 fl.create_server()
 
@@ -47,25 +45,25 @@ for round_no in range(0, ROUNDS):
     server_data_loader = fl.create_aggregated_data(workers_to_be_used)
     train_data_loader, test_data_loader = fl.create_datasets(workers_to_be_used)
 
-    # fl.create_server_model()
-    # fl.create_workers_model(workers_to_be_used)
+    fl.create_server_model()
+    fl.create_workers_model(workers_to_be_used)
 
-    # for epoch_no in range(1, EPOCH_NUM + 1):
-    #     fl.train_server(server_data_loader, round_no, epoch_no)
-    #     # fl.train_workers(train_data_loader, workers_to_be_used, round_no, epoch_no)
+    for epoch_no in range(1, EPOCH_NUM + 1):
+        fl.train_server(server_data_loader, round_no, epoch_no)
+        fl.train_workers(train_data_loader, workers_to_be_used, round_no, epoch_no)
     
-    #     W = None
-    #     if arguments['--avg']:
-    #         W = [0.1] * 10
-    #     # elif arguments['--opt']:
-    #     #     W = fl.find_best_weights(epoch)
-    #     else:
-    #         logging.error("Not expected this mode!")
-    #         exit(1)
-    #     # Apply the server model to the test dataset
-    #     fl.test(fl.server_model, test_data_loader, epoch_no, "trained")
-    #     # fl.update_models(W, fl.server_model, fl.workers_model. workers_to_be_used)
-    #     # fl.test(fl.server_model, test_data_loader, epoch_no, "averaged")
+        W = None
+        if arguments['--avg']:
+            W = [0.1] * 10
+        # elif arguments['--opt']:
+        #     W = fl.find_best_weights(epoch)
+        else:
+            logging.error("Not expected this mode!")
+            exit(1)
+        # Apply the server model to the test dataset
+        fl.update_models(W, fl.server_model, fl.workers_model, workers_to_be_used)
+        fl.test(fl.server_model, test_data_loader, epoch_no, "test1")
+        # fl.test(fl.server_model, test_data_loader, epoch_no, "averaged")
 
 
 
