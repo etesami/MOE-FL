@@ -65,7 +65,7 @@ class FederatedLearning():
 
 
     def create_workers(self, workers_id_list):
-        logging.info("Creating {} workers".format(len(workers_id_list)))
+        logging.info("Randomly select {} workers".format(len(workers_id_list)))
         for worker_id in workers_id_list:
             if worker_id not in self.workers:
                 logging.debug("Creating the worker: {}".format(worker_id))
@@ -160,61 +160,69 @@ class FederatedLearning():
         # test_datasets = []
         test_data_images = torch.Tensor()
         test_data_labels = torch.Tensor()
-        total_records_num = 0
+
         for worker_id in selected_workers_id:
             worker_record_num = len(self.train_data[worker_id]['y'])
-            total_records_num = total_records_num + worker_record_num
+
             logging.debug("Worker {} has {} records".format(worker_id, worker_record_num))
             train_images = torch.Tensor(np.array(self.train_data[worker_id]['x'], dtype = np.single).reshape(-1, 1, 28, 28))
             train_labels = torch.Tensor(np.array(self.train_data[worker_id]['y'], dtype = np.single))
+            print("Number of training data for user {} is {}".format(worker_id, len(train_labels)))
 
             # transform=transforms.Compose([transforms.ToTensor()])
             train_dataset = sy.BaseDataset(train_images, train_labels)\
                 .send(self.workers[worker_id])
             train_datasets.append(train_dataset)
 
+            print("Number of training data in the BaseDataset class is {}".format(len(train_dataset.targets)))
+
             test_images = torch.Tensor(np.array(self.test_data[worker_id]['x'], dtype = np.single).reshape(-1 , 1, 28, 28))
             test_labels = torch.Tensor(np.array(self.test_data[worker_id]['y'], dtype = np.single))
+            print("Number of testing data for user {} is {}".format(worker_id, len(test_labels)))
 
-            # 
             test_data_images = torch.cat((test_data_images, test_images))
-            test_data_images = torch.cat((test_data_labels, test_labels))
-            print("Len test dataset: {}".format(len(test_data_labels)))
-            # test_dataset = sy.BaseDataset(test_images, test_labels)
-                # .send(self.workers[worker_id])
-            # test_datasets.append(test_dataset)
-
-        logging.debug("Total number of records for all workers: {}".format(total_records_num))
+            test_data_labels = torch.cat((test_data_labels, test_labels))
 
         train_dataset_loader = sy.FederatedDataLoader(
             sy.FederatedDataset(train_datasets), batch_size = self.args.batch_size, shuffle=False, drop_last = True, **self.kwargs)
+
+        print("Length of Federated Dataset (Total number of records for all workers): {}".format(len(train_dataset_loader.federated_dataset)))
         
+        test_dataset = sy.BaseDataset(test_data_images, test_data_labels)
+        print("Length of the test dataset (Basedataset): {}".format(len(test_dataset)))
+
         test_dataset_loader = torch.utils.data.DataLoader(
-            test_datasets, batch_size=self.args.test_batch_size, shuffle=True, drop_last = True, **self.kwargs)
+            test_dataset, batch_size=self.args.test_batch_size, shuffle=True, drop_last = True, **self.kwargs)
         
+        print("Length of the test data loader (datasets): {}".format(len(test_dataset_loader.dataset)))
+
         return train_dataset_loader, test_dataset_loader
         
 
     # Create aggregation in server from all users.
     def create_aggregated_data(self, workers_id_list):
-        logging.info("Creating the aggregated data for the server")
+        logging.info("Creating the aggregated data for the server from previously selected users")
         # Fraction of public data of each user, which be shared by the server
         aggregated_image = np.array([], dtype = np.single).reshape(-1, 28, 28)
         aggregated_label = np.array([], dtype = np.single)
         fraction = 0.2 
+        total_samples_count = 0
         for worker_id in workers_id_list:
-            total_samples = len(self.train_data[worker_id]['y'])
+            worker_samples_count = len(self.train_data[worker_id]['y'])
+            
             num_samples_for_server = math.floor(fraction * len(self.train_data[worker_id]['y']))
             logging.info("Sending {} from client {} with total {}".format(
-                num_samples_for_server, worker_id, total_samples
+                num_samples_for_server, worker_id, worker_samples_count
             ))
-            indices = random.sample(range(total_samples), num_samples_for_server)
+            total_samples_count = total_samples_count + num_samples_for_server
+            indices = random.sample(range(worker_samples_count), num_samples_for_server)
             
             images = np.array([self.train_data[worker_id]['x'][i] for i in indices], dtype = np.single).reshape(-1, 28, 28)
             labels = np.array([self.train_data[worker_id]['y'][i] for i in indices], dtype = np.single)
             aggregated_image = np.concatenate((aggregated_image, images))
             aggregated_label = np.concatenate((aggregated_label, labels))
 
+        logging.info("Selected {} samples in total for the server from all users.".format(total_samples_count))
         logging.debug("Aggregated train images shape: {}, dtype: {}".format(
             aggregated_image.shape, aggregated_image.dtype))
         logging.debug("Aggregated train images label: {}, dtype: {}".format(
