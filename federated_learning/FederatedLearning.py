@@ -21,7 +21,7 @@ import neptune
 class Arguments():
     def __init__(self, epochs_num, use_cuda = False):
         self.batch_size = 12
-        self.test_batch_size = 1000
+        self.test_batch_size = 5
         self.epochs = epochs_num
         self.lr = 0.01
         self.momentum = 0.5
@@ -192,7 +192,7 @@ class FederatedLearning():
         print("Length of the test dataset (Basedataset): {}".format(len(test_dataset)))
 
         test_dataset_loader = torch.utils.data.DataLoader(
-            test_dataset, batch_size=self.args.test_batch_size, shuffle=True, drop_last = True, **self.kwargs)
+            test_dataset, batch_size=self.args.test_batch_size, shuffle=True, drop_last = False, **self.kwargs)
         
         print("Length of the test data loader (datasets): {}".format(len(test_dataset_loader.dataset)))
 
@@ -397,6 +397,7 @@ class FederatedLearning():
             worker_opt = workers_opt[worker_id]
             worker_model.train()
             data, target = data.to(self.device), target.to(self.device, dtype = torch.int64)
+            print("Shape of Train data: {}".format(data.shape))
             worker_opt.zero_grad()
             output = worker_model(data)
             loss = F.nll_loss(output, target)
@@ -455,24 +456,22 @@ class FederatedLearning():
 
 
     def test_workers(self, model, test_loader, epoch, test_name):
-        # if fl.write_to_file:
-            # file = open(self.output_prefix + "_test", "a")
         model.eval()
         test_loss = 0
         correct = 0
-        # print(dir(test_loader))
         with torch.no_grad():
-            # all_data = test_loader['x']
-            # targets = test_loader['y']
-            # for idx in range(0, len(all_data)):
-            for data, target in test_loader:
-                # data = all_data[idx]
-                # target = targets[idx]
-                data, target = data.to(self.device), target.to(self.device)
-                output = model(data)
-                test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-                pred = output.argmax(1, keepdim=True)  # get the index of the max log-probability
-                correct += pred.eq(target.view_as(pred)).sum().item()
+            for batch_idx, (data_, target_) in enumerate(test_loader):
+                for idx in range(0, len(data_)):
+                    data = data_[idx]
+                    target = target_[idx]
+                    print("Shape of Test data{}".format(data.shape))
+                    print("Shape of Target data{}".format(target.shape))
+                    data, target = data.to(self.device), target.to(self.device)
+                    output = model(data)
+                    print("Predicted output: {} and the target is {}".format(output, target))
+                    test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+                    pred = output.argmax(1, keepdim=True)  # get the index of the max log-probability
+                    correct += pred.eq(target.view_as(pred)).sum().item()
 
         test_loss /= len(test_loader.dataset)
         if self.write_to_file:

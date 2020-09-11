@@ -15,7 +15,7 @@ OUTPUT_PATH_PREFIX = "data_tmp/"
 MNIST_PATH = "/home/ubuntu/data/MNIST/processed_manual"
 EMNIST_PATH = "/home/ubuntu/data/EMNIST/processed"
 FEMNIST_PATH="/home/ubuntu/leaf/data/femnist/data"
-NUM_TRAIN_WORKERS = 30 # Total number of users which participate in training in each round
+NUM_TRAIN_WORKERS = 1 # Total number of users which participate in training in each round
 EPOCH_NUM = 1
 ROUNDS = 1
 
@@ -43,20 +43,22 @@ for round_no in range(0, ROUNDS):
     workers_to_be_used = [fl.workers_id[i] for i in workers_to_be_used_idx]
     fl.create_workers(workers_to_be_used)
 
+
+    test_data_loaders = {}
     for worker_id in workers_to_be_used:
         workers_to_be_used_ = []
         workers_to_be_used_.append(worker_id)
 
         # server_data_loader = fl.create_aggregated_data(workers_to_be_used)
         train_data_loader, test_data_loader = fl.create_datasets(workers_to_be_used_)
+        test_data_loaders[worker_id] = test_data_loader
 
         # fl.create_server_model()
         fl.create_workers_model(workers_to_be_used_)
-
+        print("Conv2 bias data: {}".format(fl.workers_model[worker_id].conv2.bias.data))
         for epoch_no in range(1, EPOCH_NUM + 1):
             # fl.train_server(server_data_loader, round_no, epoch_no)
             fl.train_workers(train_data_loader, workers_to_be_used_, round_no, epoch_no)
-            fl.test_workers(fl.workers_model[worker_id], test_data_loader, epoch_no, "test1")
             # W = None
             # if arguments['--avg']:
             #     W = [0.1] * 10
@@ -67,8 +69,12 @@ for round_no in range(0, ROUNDS):
             #     exit(1)
             # Apply the server model to the test dataset
             # fl.update_models(W, fl.server_model, fl.workers_model, workers_to_be_used)
-            fl.test(fl.server_model, test_data_loader, epoch_no, "test1")
+            # fl.test(fl.server_model, test_data_loader, epoch_no, "test1")
             # fl.test(fl.server_model, test_data_loader, epoch_no, "averaged")
+
+    # print("Conv2 bias data: {}".format(fl.getback_model(fl.workers_model[worker_id]).conv2.bias.data))
+    for worker_id in workers_to_be_used:
+        fl.test_workers(fl.workers_model[worker_id], test_data_loaders[worker_id], epoch_no, "Test: " + worker_id)
 
 
 
