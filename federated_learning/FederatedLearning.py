@@ -454,13 +454,48 @@ class FederatedLearning():
         print()
 
 
+    def test_workers(self, model, test_loader, epoch, test_name):
+        # if fl.write_to_file:
+            # file = open(self.output_prefix + "_test", "a")
+        model.eval()
+        test_loss = 0
+        correct = 0
+        # print(dir(test_loader))
+        with torch.no_grad():
+            # all_data = test_loader['x']
+            # targets = test_loader['y']
+            # for idx in range(0, len(all_data)):
+            for data, target in test_loader:
+                # data = all_data[idx]
+                # target = targets[idx]
+                data, target = data.to(self.device), target.to(self.device)
+                output = model(data)
+                test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+                pred = output.argmax(1, keepdim=True)  # get the index of the max log-probability
+                correct += pred.eq(target.view_as(pred)).sum().item()
+
+        test_loss /= len(test_loader.dataset)
+        if self.write_to_file:
+            neptune.log_metric("server_test_loss_" + test_name, test_loss)
+            neptune.log_metric("server_test_acc_" + test_name, 100. * correct / len(test_loader.dataset))
+            # file = open(self.output_prefix + "_test", "a")
+            # TO_FILE = '{} {} "{{/*0.80 Accuracy:}}\\n{}%" {}\n'.format(
+            #     epoch, test_loss, 
+            #     100. * correct / len(test_loader.dataset),
+            #     100. * correct / len(test_loader.dataset))
+            # file.write(TO_FILE)
+            # file.close()
+        logging.info('Test set [{}]: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+            test_name, test_loss, correct, len(test_loader.dataset),
+            100. * correct / len(test_loader.dataset)))
+
     def test(self, model, test_loader, epoch, test_name):
         # if fl.write_to_file:
             # file = open(self.output_prefix + "_test", "a")
         model.eval()
         test_loss = 0
         correct = 0
-        print(dir(test_loader))
+        # print(dir(test_loader))
         with torch.no_grad():
             for data, target in test_loader:
                 data, target = data.to(self.device), target.to(self.device)
