@@ -20,10 +20,10 @@ import neptune
 
 class Arguments():
     def __init__(self, epochs_num, use_cuda = False):
-        self.batch_size = 10
-        self.test_batch_size = 10
+        self.batch_size = 20
+        self.test_batch_size = 5
         self.epochs = epochs_num
-        self.lr = 0.01
+        self.lr = 0.1
         self.momentum = 0.5
         self.no_cuda = False
         self.seed = 1
@@ -472,13 +472,13 @@ class FederatedLearning():
                 # print("Target type: {}".format(target.type()))
                 test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
                 pred = output.argmax(1, keepdim=True)  # get the index of the max log-probability
-                print("--> Pred: {}, Target: {}".format(pred, target))
+                # print("--> Pred: {}, Target: {}".format(pred, target))
                 correct += pred.eq(target.view_as(pred)).sum().item()
 
         test_loss /= len(test_loader.dataset)
         if self.write_to_file:
-            neptune.log_metric("server_test_loss_" + test_name, test_loss)
-            neptune.log_metric("server_test_acc_" + test_name, 100. * correct / len(test_loader.dataset))
+            neptune.log_metric("test_loss_" + test_name, test_loss)
+            neptune.log_metric("test_acc_" + test_name, 100. * correct / len(test_loader.dataset))
             # file = open(self.output_prefix + "_test", "a")
             # TO_FILE = '{} {} "{{/*0.80 Accuracy:}}\\n{}%" {}\n'.format(
             #     epoch, test_loss, 
