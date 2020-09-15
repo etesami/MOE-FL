@@ -16,7 +16,7 @@ MNIST_PATH = "/home/ubuntu/data/MNIST/processed_manual"
 EMNIST_PATH = "/home/ubuntu/data/EMNIST/processed"
 FEMNIST_PATH="/home/ubuntu/leaf/data/femnist/data"
 NUM_TRAIN_WORKERS = 1 # Total number of users which participate in training in each round
-EPOCH_NUM = 1
+EPOCH_NUM = 15
 ROUNDS = 1
 
 fl = FederatedLearning(
@@ -34,6 +34,8 @@ fl.load_femnist_train(FEMNIST_PATH)
 fl.load_femnist_test(FEMNIST_PATH)
 logging.debug("Some sample data for user {}: {}".format(fl.workers_id[0], fl.train_data[fl.workers_id[0]]['y'][0:15]))
 
+
+random.seed("12345")
 # fl.create_server()
 
 for round_no in range(0, ROUNDS):
@@ -55,7 +57,7 @@ for round_no in range(0, ROUNDS):
 
         # fl.create_server_model()
         fl.create_workers_model(workers_to_be_used_)
-        print("Conv2 bias data: {}".format(fl.workers_model[worker_id].conv2.bias.data))
+        # print("Conv2 bias data: {}".format(fl.workers_model[worker_id].conv2.bias.data))
         for epoch_no in range(1, EPOCH_NUM + 1):
             # fl.train_server(server_data_loader, round_no, epoch_no)
             fl.train_workers(train_data_loader, workers_to_be_used_, round_no, epoch_no)
@@ -74,6 +76,7 @@ for round_no in range(0, ROUNDS):
 
     # print("Conv2 bias data: {}".format(fl.getback_model(fl.workers_model[worker_id]).conv2.bias.data))
     for worker_id in workers_to_be_used:
+        fl.getback_model(fl.workers_model[worker_id])
         fl.test_workers(fl.workers_model[worker_id], test_data_loaders[worker_id], epoch_no, "Test: " + worker_id)
 
 
