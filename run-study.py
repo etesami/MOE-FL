@@ -23,7 +23,7 @@ fl = FederatedLearning(
         epochs_num = EPOCH_NUM, 
         output_prefix = OUTPUT_PATH_PREFIX + arguments['--output-file'],
         data_path = MNIST_PATH, 
-        write_to_file = True if arguments['--log'] == "True" else False,
+        write_to_file = True if arguments['--log'] == "true" or arguments['--log'] == "True" else False,
         log_level = logging.INFO)
 
 if fl.write_to_file:
@@ -44,6 +44,8 @@ workers_to_be_used_idx = random.sample(range(len(fl.workers_id)), NUM_TRAIN_WORK
 workers_to_be_used = [fl.workers_id[i] for i in workers_to_be_used_idx]
 fl.create_workers(workers_to_be_used)
 test_data_loaders = {}
+# fl.create_server_model()
+fl.create_workers_model(workers_to_be_used)
 for worker_id in workers_to_be_used:
     workers_to_be_used_ = []
     workers_to_be_used_.append(worker_id)
@@ -52,31 +54,29 @@ for worker_id in workers_to_be_used:
     train_data_loader, test_data_loader = fl.create_datasets(workers_to_be_used_)
     test_data_loaders[worker_id] = test_data_loader
 
-    # fl.create_server_model()
-    fl.create_workers_model(workers_to_be_used_)
 
-for round_no in range(0, ROUNDS):
-    
-    for epoch_no in range(1, EPOCH_NUM + 1):
-        # fl.train_server(server_data_loader, round_no, epoch_no)
-        fl.train_workers(train_data_loader, workers_to_be_used_, round_no, epoch_no)
-        # W = None
-        # if arguments['--avg']:
-        #     W = [0.1] * 10
-        # # elif arguments['--opt']:
-        # #     W = fl.find_best_weights(epoch)
-        # else:
-        #     logging.error("Not expected this mode!")
-        #     exit(1)
-        # Apply the server model to the test dataset
-        # fl.update_models(W, fl.server_model, fl.workers_model, workers_to_be_used)
-        # fl.test(fl.server_model, test_data_loader, epoch_no, "test1")
-        # fl.test(fl.server_model, test_data_loader, epoch_no, "averaged")
+    for round_no in range(0, ROUNDS):
+        
+        for epoch_no in range(1, EPOCH_NUM + 1):
+            # fl.train_server(server_data_loader, round_no, epoch_no)
+            fl.train_workers(train_data_loader, workers_to_be_used_, round_no, epoch_no)
+            # W = None
+            # if arguments['--avg']:
+            #     W = [0.1] * 10
+            # # elif arguments['--opt']:
+            # #     W = fl.find_best_weights(epoch)
+            # else:
+            #     logging.error("Not expected this mode!")
+            #     exit(1)
+            # Apply the server model to the test dataset
+            # fl.update_models(W, fl.server_model, fl.workers_model, workers_to_be_used)
+            # fl.test(fl.server_model, test_data_loader, epoch_no, "test1")
+            # fl.test(fl.server_model, test_data_loader, epoch_no, "averaged")
 
-    # print("Conv2 bias data: {}".format(fl.getback_model(fl.workers_model[worker_id]).conv2.bias.data))
-    for worker_id in workers_to_be_used:
-        fl.getback_model(fl.workers_model[worker_id])
-        fl.test_workers(fl.workers_model[worker_id], test_data_loaders[worker_id], epoch_no, "Test: " + worker_id)
+        # print("Conv2 bias data: {}".format(fl.getback_model(fl.workers_model[worker_id]).conv2.bias.data))
+        for worker_id in workers_to_be_used_:
+            fl.getback_model(fl.workers_model[worker_id])
+            fl.test_workers(fl.workers_model[worker_id], test_data_loaders[worker_id], epoch_no, "Test: " + worker_id)
 
 
 
