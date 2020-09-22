@@ -18,15 +18,15 @@ EMNIST_PATH = "/home/ubuntu/EMNIST/"
 FEMNIST_PATH="/home/ubuntu/leaf/data/femnist/data"
 FEMNIST_PATH_GOOGLE="/home/ubuntu/data/fed_google"
 NUM_TRAIN_WORKERS = 30 # Total number of users which participate in training in each round
-EPOCH_NUM = 1
-ROUNDS = 1
+EPOCH_NUM = 10
+ROUNDS = 100
 
 fl = FederatedLearning(
         epochs_num = EPOCH_NUM, 
         output_prefix = OUTPUT_PATH_PREFIX + arguments['--output-file'],
         data_path = EMNIST_PATH, 
         write_to_file = True if arguments['--log'] == "true" or arguments['--log'] == "True" else False,
-        log_level = logging.DEBUG)
+        log_level = logging.INFO)
 
 if fl.write_to_file:
     neptune.init('ehsan/sandbox')
@@ -54,18 +54,18 @@ fl.create_workers_model(workers_to_be_used)
 server_data_loader = fl.create_aggregated_data(workers_to_be_used)
 train_data_loader, test_data_loader = fl.create_datasets(workers_to_be_used)
 
-if arguments['--attack'] == "1":
-    mal_users_list = ast.literal_eval(arguments['--workers-percentage'])
-    data_percentage = int(arguments['--data-percentage'])
-    fl.attack_permute_labels_randomly(mal_users_list, data_percentage)
-elif arguments['--attack'] == "2":
-    sys.exit(1)
-    # mal_users_list = ast.literal_eval(arguments['--workers-percentage'])
-    # data_percentage = int(arguments['--data-percentage'])
-    # a = fl.attack_permute_labels_collaborative(mal_users_list, 40)
-else:
-    logging.info("** No attack is performed on the dataset.")
-    sys.exit(1)
+# if arguments['--attack'] == "1":
+#     mal_users_list = ast.literal_eval(arguments['--workers-percentage'])
+#     data_percentage = int(arguments['--data-percentage'])
+#     fl.attack_permute_labels_randomly(mal_users_list, data_percentage)
+# elif arguments['--attack'] == "2":
+#     sys.exit(1)
+#     # mal_users_list = ast.literal_eval(arguments['--workers-percentage'])
+#     # data_percentage = int(arguments['--data-percentage'])
+#     # a = fl.attack_permute_labels_collaborative(mal_users_list, 40)
+# else:
+#     logging.info("** No attack is performed on the dataset.")
+#     sys.exit(1)
 
 
 for round_no in range(0, ROUNDS):
@@ -74,16 +74,16 @@ for round_no in range(0, ROUNDS):
         fl.train_server(server_data_loader, round_no, epoch_no)
         fl.train_workers(train_data_loader, workers_to_be_used, round_no, epoch_no)
     
-    # W = None
-    # if arguments['--avg']:
-    #     W = [0.1] * len(workers_to_be_used)
-    # elif arguments['--opt']:
-    #     W = fl.find_best_weights(workers_to_be_used, round_no)
-    # else:
-    #     logging.error("Not expected this mode!")
-    #     sys.exit(1)
+    W = None
+    if arguments['--avg']:
+        W = [0.1] * len(workers_to_be_used)
+    elif arguments['--opt']:
+        W = fl.find_best_weights(workers_to_be_used, round_no)
+    else:
+        logging.error("Not expected this mode!")
+        sys.exit(1)
     # Apply the server model to the test dataset
-    # fl.update_models(W, fl.server_model, fl.workers_model, workers_to_be_used)
+    fl.update_models(0.7, W, fl.server_model, fl.workers_model, workers_to_be_used)
     fl.test(fl.server_model, test_data_loader, epoch_no, "server")
         # fl.test(fl.server_model, test_data_loader, epoch_no, "averaged")
 

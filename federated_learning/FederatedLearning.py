@@ -731,7 +731,7 @@ class FederatedLearning():
             return W.value
 
 
-    def update_models(self, W, server_model, workers_model, workers_to_be_used):
+    def update_models(self, alpha, W, server_model, workers_model, workers_to_be_used):
         self.getback_model(workers_model, workers_to_be_used)
         self.getback_model(server_model)
         tmp_model = FLNet().to(self.device)
@@ -747,7 +747,6 @@ class FederatedLearning():
             tmp_model.fc2.bias.data.fill_(0)
 
             counter = 0
-            # for worker_id, worker_model in workers_model.items():
             for worker_id in workers_to_be_used:
                 worker_model = workers_model[worker_id]
                 tmp_model.conv1.weight.data = (
@@ -768,34 +767,26 @@ class FederatedLearning():
                         tmp_model.fc2.bias.data + W[counter] * worker_model.fc2.bias.data)
                 counter = counter + 1
 
-            # base_model.conv1.weight.data = tmp_model.conv1.weight.data
-            # base_model.conv1.bias.data = tmp_model.conv1.bias.data
-            # base_model.conv2.weight.data = tmp_model.conv2.weight.data
-            # base_model.conv2.bias.data = tmp_model.conv2.bias.data
-            # base_model.fc1.weight.data = tmp_model.fc1.weight.data
-            # base_model.fc1.bias.data = tmp_model.fc1.bias.data
-            # base_model.fc2.weight.data = tmp_model.fc2.weight.data
-            # base_model.fc2.bias.data = tmp_model.fc2.bias.data
 
-            server_model.conv1.weight.data = tmp_model.conv1.weight.data
-            server_model.conv1.bias.data = tmp_model.conv1.bias.data
-            server_model.conv2.weight.data = tmp_model.conv2.weight.data
-            server_model.conv2.bias.data = tmp_model.conv2.bias.data
-            server_model.fc1.weight.data = tmp_model.fc1.weight.data
-            server_model.fc1.bias.data = tmp_model.fc1.bias.data
-            server_model.fc2.weight.data = tmp_model.fc2.weight.data
-            server_model.fc2.bias.data = tmp_model.fc2.bias.data
+            server_model.conv1.weight.data = alpha * server_model.conv1.weight.data + (1 - alpha) * tmp_model.conv1.weight.data
+            server_model.conv1.bias.data = alpha * server_model.conv1.bias.data + (1 - alpha) * tmp_model.conv1.bias.data
+            server_model.conv2.weight.data = alpha * server_model.conv2.weight.data + (1 - alpha) * tmp_model.conv2.weight.data
+            server_model.conv2.bias.data = alpha * server_model.conv2.bias.data + (1 - alpha) * tmp_model.conv2.bias.data
+            server_model.fc1.weight.data = alpha * server_model.fc1.weight.data + (1 - alpha) * tmp_model.fc1.weight.data
+            server_model.fc1.bias.data = alpha * server_model.fc1.bias.data + (1 - alpha) * tmp_model.fc1.bias.data
+            server_model.fc2.weight.data = alpha * server_model.fc2.weight.data + (1 - alpha) * tmp_model.fc2.weight.data
+            server_model.fc2.bias.data = alpha * server_model.fc2.bias.data + (1 - alpha) * tmp_model.fc2.bias.data
 
             # for worker_id in workers_model.keys():
             for worker_id in workers_to_be_used:
-                workers_model[worker_id].conv1.weight.data = tmp_model.conv1.weight.data
-                workers_model[worker_id].conv1.bias.data = tmp_model.conv1.bias.data
-                workers_model[worker_id].conv2.weight.data = tmp_model.conv2.weight.data
-                workers_model[worker_id].conv2.bias.data = tmp_model.conv2.bias.data
-                workers_model[worker_id].fc1.weight.data = tmp_model.fc1.weight.data
-                workers_model[worker_id].fc1.bias.data = tmp_model.fc1.bias.data
-                workers_model[worker_id].fc2.weight.data = tmp_model.fc2.weight.data
-                workers_model[worker_id].fc2.bias.data = tmp_model.fc2.bias.data
+                workers_model[worker_id].conv1.weight.data = server_model.conv1.weight.data
+                workers_model[worker_id].conv1.bias.data = server_model.conv1.bias.data
+                workers_model[worker_id].conv2.weight.data = server_model.conv2.weight.data
+                workers_model[worker_id].conv2.bias.data = server_model.conv2.bias.data
+                workers_model[worker_id].fc1.weight.data = server_model.fc1.weight.data
+                workers_model[worker_id].fc1.bias.data = server_model.fc1.bias.data
+                workers_model[worker_id].fc2.weight.data = server_model.fc2.weight.data
+                workers_model[worker_id].fc2.bias.data = server_model.fc2.bias.data
 
     def create_server_model(self):
         logging.info("Creating a model for the server")
