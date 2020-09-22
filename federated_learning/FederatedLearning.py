@@ -1,4 +1,5 @@
 import torch
+import h5py
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
@@ -21,7 +22,7 @@ import neptune
 class Arguments():
     def __init__(self, epochs_num, use_cuda = False):
         self.batch_size = 20
-        self.test_batch_size = 5
+        self.test_batch_size = 10
         self.epochs = epochs_num
         self.lr = 0.01
         self.momentum = 0.5
@@ -87,10 +88,17 @@ class FederatedLearning():
         train_labels = idx2numpy.convert_from_file(self.data_path + file_path)
         
         self.train_images, self.train_labels = train_images.copy(), train_labels.copy()
-        # indices = np.arange(self.train_images.shape[0])
-        # np.random.shuffle(indices)
-        # self.train_images = self.train_images[indices]
-        # self.train_labels = self.train_labels[indices]
+
+
+    def load_emnist_data_training_binary(self):
+        file_path = "/emnist-digits-train-images-idx3-ubyte"
+        train_images = idx2numpy.convert_from_file(self.data_path + file_path)
+        
+        file_path = "/emnist-digits-train-labels-idx1-ubyte"
+        train_labels = idx2numpy.convert_from_file(self.data_path + file_path)
+        
+        train_images, train_labels = train_images.copy(), train_labels.copy()
+        return train_images, train_labels
 
 
     def load_emnist_data_training(self):
@@ -137,6 +145,48 @@ class FederatedLearning():
     def load_femnist_test(self, data_dir):
         logging.info("Loading test dataset")
         _, self.test_data = self.read_raw_data(data_dir + "/test", get_workers = False)
+
+
+    def load_femnist_test_digits(self, data_dir):
+        logging.debug("Reading femnist (google) raw data")
+        file_name_test = "fed_emnist_digitsonly_test.h5"
+        file_path = data_dir + "/" + file_name_test
+        groups = []
+        data = defaultdict(lambda : None)
+        with h5py.File(file_path, "r") as h5_file:
+            for gname, group in h5_file.items():
+                # gname: example
+                for dname, ds in group.items():
+                    # dname: f0000_14
+                    data_ = []
+                    for a, b in ds.items():
+                        # a: label, b: list(int)
+                        # a: pixels, b: list(list(int))
+                        data_.append(b[()])
+                    data[dname] = {'x' : data_[1], 'y' : data_[0]}
+        self.test_data = data
+
+
+    def load_femnist_train_digits(self, data_dir):
+        logging.debug("Reading femnist (google) raw data")
+        file_name_train = "fed_emnist_digitsonly_train.h5"
+        file_path = data_dir + "/" + file_name_train
+        workers_id = []
+        groups = []
+        data = defaultdict(lambda : None)
+        with h5py.File(file_path, "r") as h5_file:
+            for gname, group in h5_file.items():
+                # gname: example
+                for dname, ds in group.items():
+                    # dname: f0000_14
+                    workers_id.append(dname)
+                    data_ = []
+                    for a, b in ds.items():
+                        # a: label, b: list(int)
+                        # a: pixels, b: list(list(int))
+                        data_.append(b[()])
+                    data[dname] = {'x' : data_[1], 'y' : data_[0]}
+        self.workers_id, self.train_data = workers_id, data
 
 
     def count_digits(self):
@@ -265,36 +315,83 @@ class FederatedLearning():
         elif model.location is not None:
             model.get()
 
+    def get_labels_from_data_percentage(self, data_percentage):
+        # Find labels which are going to be permuted base on the value of the percentage
+        labels_to_be_changed = None
+        if 20 <= data_percentage and data_percentage < 40:
+            labels_to_be_changed = np.array(random.sample(range(10), 2))
+        elif 40 <= data_percentage and data_percentage < 60:
+            labels_to_be_changed = np.array(random.sample(range(10), 4))
+        elif 60 <= data_percentage and data_percentage < 80:
+            labels_to_be_changed = np.array(random.sample(range(10), 6))
+        elif 80 <= data_percentage and data_percentage < 100:
+            labels_to_be_changed = np.array(random.sample(range(10), 8))
+        elif data_percentage == 100:
+            labels_to_be_changed = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        
+        return labels_to_be_changed
+
+
     # '''
     # Attack 1
     # Permute all labels for given workers' id
     # workers_id_list: the list of workers' id (zero-based)
     # '''
-    def attack_permute_labels_randomly(self, workers_percentage):
+    def attack_permute_labels_randomly(self, workers_percentage, data_percentage):
         logging.info("ATTACK 1: Permute labels of {} percentage of workers".format(workers_percentage))
         
-        # Find workers which are counted as malicious users
-        workers_id_list = None
-        if 20 <= workers_percentage and workers_percentage < 40:
-            workers_id_list = np.array([0, 1])
-        elif 40 <= workers_percentage and workers_percentage < 50:
-            workers_id_list = np.array([0, 1, 2, 3])
-        elif 50 <= workers_percentage and workers_percentage < 60:
-            workers_id_list = np.array([0, 1, 2, 3, 4])
-        elif 60 <= workers_percentage and workers_percentage < 80:
-            workers_id_list = np.array([0, 1, 2, 3, 4, 5])
-        elif 80 <= workers_percentage and workers_percentage < 100:
-            workers_id_list = np.array([0, 1, 2, 3, 4, 5, 6, 7])
-        elif workers_percentage == 100:
-            workers_id_list = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-        logging.debug("Affected workers: {}".format(workers_id_list))  
+        NUM_MAL_WORKERS = round(workers_percentage * len(self.workers_id) / 100.0)
+        selected_workers_idx = random.sample(range(len(self.workers_id)), NUM_MAL_WORKERS)
+        selected_workers_id = [self.workers_id[i] for i in selected_workers_idx]
+
+        logging.debug("Some Affected workers: {}...".format(selected_workers_id[0:1]))  
+
+        for worker_id in selected_workers_id:
         
-        step = int(len(self.train_labels) / len(self.workers))
-        for i in workers_id_list: 
-            logging.debug("-- Permute all labels from index {} to {}".format(
-                i * step, (i + 1) * step))
-            self.train_labels[i * step:(i + 1) * step] = \
-                        np.random.permutation(self.train_labels[i * step:(i + 1) * step])
+            # Find labels which are going to be permuted base on the value of the percentage
+            labels_to_be_changed = self.get_labels_from_data_percentage(data_percentage)
+            logging.debug("Affected labels: {}".format(labels_to_be_changed))
+
+            # Find index of each number in the train_label and store them
+            # into a dic named labels_indexes
+            labels_indexes = {}
+            for i in range(0, 10):
+                labels_indexes[i] = np.array([], dtype = np.int64)
+        
+            # Initialization of indexes
+            index = 0
+            logging.debug("Worker Labels (Before): {}".format(self.train_data[worker_id]['y']))
+            for n in self.train_data[worker_id]['y']:
+                labels_indexes[n] = np.concatenate((labels_indexes[n], [index]))
+                index = index + 1
+            
+            for l in range(0, len(labels_to_be_changed), 2):
+                
+                # ex.
+                # labels_to_be_changed = [0, 1]
+                # labels_to_be_changed[l] = 0
+                # labels_to_be_changed[l + 1] = 1 
+                # labels_indexes[0] = list if indexes of 0
+                logging.debug("-- Permute {} with {} from worker {}".format(
+                    labels_to_be_changed[l], labels_to_be_changed[l+1],worker_id))
+
+                indexes_first_digit = labels_indexes[labels_to_be_changed[l]]
+                logging.debug("-- Some indexes of {}: {}".format(
+                    labels_to_be_changed[l], 
+                    labels_indexes[labels_to_be_changed[l]][0:10])
+                )
+                
+                indexes_sec_digit = labels_indexes[labels_to_be_changed[l + 1]]
+                logging.debug("-- Some indexes of {}: {}".format(
+                    labels_to_be_changed[l + 1], 
+                    labels_indexes[labels_to_be_changed[l + 1]][0:10])
+                )
+
+                self.train_data[worker_id]['y'][indexes_first_digit] = labels_to_be_changed[l + 1]
+                self.train_data[worker_id]['y'][indexes_sec_digit] = labels_to_be_changed[l]
+            
+            logging.debug("Worker Labels (After): {}\n".format(self.train_data[worker_id]['y']))
+
 
     def attack_permute_labels_collaborative(self, workers_percentage, data_percentage):
         logging.info("ATTACK 2: Permute {} percentage of labels of the {} percentage of workers".format(data_percentage, workers_percentage))
@@ -499,7 +596,7 @@ class FederatedLearning():
         # print(dir(test_loader))
         with torch.no_grad():
             for data, target in test_loader:
-                data, target = data.to(self.device), target.to(self.device)
+                data, target = data.to(self.device), target.to(self.device, dtype=torch.int64)
                 output = model(data)
                 test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
                 pred = output.argmax(1, keepdim=True)  # get the index of the max log-probability
@@ -507,8 +604,8 @@ class FederatedLearning():
 
         test_loss /= len(test_loader.dataset)
         if self.write_to_file:
-            neptune.log_metric("server_test_loss_" + test_name, test_loss)
-            neptune.log_metric("server_test_acc_" + test_name, 100. * correct / len(test_loader.dataset))
+            neptune.log_metric("test_loss_" + test_name, test_loss)
+            neptune.log_metric("test_acc_" + test_name, 100. * correct / len(test_loader.dataset))
             # file = open(self.output_prefix + "_test", "a")
             # TO_FILE = '{} {} "{{/*0.80 Accuracy:}}\\n{}%" {}\n'.format(
             #     epoch, test_loss, 
@@ -521,10 +618,11 @@ class FederatedLearning():
             100. * correct / len(test_loader.dataset)))
 
 
-    def find_best_weights(self, epoch):
+    def find_best_weights(self, workers_to_be_used, round_no):
         # reference_model = self.server_model
         # workers_model = self.workers_model
-        file = open(self.output_prefix + "_weights", "a")
+        # if self.write_to_file:
+            # file = open(self.output_prefix + "_weights", "a")
         self.getback_model(self.server_model)
         with torch.no_grad():
             reference_layers = [None] * 8
@@ -553,8 +651,10 @@ class FederatedLearning():
                 convW0_21
                 convW0_22
             """
-            self.getback_model(self.workers_model)
-            for worker_id, worker_model in self.workers_model.items():
+            for worker_id in workers_to_be_used:
+            # for worker_id, worker_model in self.workers_model.items():
+                worker_model = self.workers_model[worker_id]
+                self.getback_model(worker_model)
                 workers_params[worker_id] = [[] for i in range(8)]
                 workers_params[worker_id][0] = worker_model.conv1.weight.data.numpy().copy().reshape(-1, 1)
                 workers_params[worker_id][1] = worker_model.conv1.bias.data.numpy().copy().reshape(-1, 1)
@@ -582,14 +682,14 @@ class FederatedLearning():
 
             workers_all_params = []
             logging.info("Start the optimization....")
-            workers_all_params.append(np.array([]).reshape(workers_params["worker0"][0].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params["worker0"][1].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params["worker0"][2].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params["worker0"][3].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params["worker0"][4].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params["worker0"][5].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params["worker0"][6].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params["worker0"][7].shape[0], 0))
+            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][0].shape[0], 0))
+            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][1].shape[0], 0))
+            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][2].shape[0], 0))
+            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][3].shape[0], 0))
+            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][4].shape[0], 0))
+            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][5].shape[0], 0))
+            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][6].shape[0], 0))
+            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][7].shape[0], 0))
 
             for worker_id, worker_model in workers_params.items():
                 workers_all_params[0] = np.concatenate((workers_all_params[0], workers_params[worker_id][0]), 1)
@@ -625,8 +725,8 @@ class FederatedLearning():
             result = prob.solve(solver=cp.MOSEK)
             logging.info(W.value)
             logging.info("")
-            TO_FILE = '{} {}\n'.format(epoch, np.array2string(W.value).replace('\n',''))
-            file.write(TO_FILE)
+            # TO_FILE = '{} {}\n'.format(round_no, np.array2string(W.value).replace('\n',''))
+            # file.write(TO_FILE)
             # file.close()
             return W.value
 
