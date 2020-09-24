@@ -18,6 +18,7 @@ from collections import defaultdict
 from federated_learning.FLCustomDataset import FLCustomDataset
 from federated_learning.FLNet import FLNet
 import neptune
+import time
 
 class Arguments():
     def __init__(self, epochs_num, use_cuda = False):
@@ -28,7 +29,7 @@ class Arguments():
         self.momentum = 0.5
         self.no_cuda = False
         self.seed = 1
-        self.log_interval = 1
+        self.log_interval = 2
         self.save_model = False
         # self.workers_num = workers_num
 
@@ -42,12 +43,12 @@ class FederatedLearning():
 
         self.workers = dict()
         self.workers_id = []
-        self.workers_model = dict()
+        # self.workers_model = dict()
         self.server = None
-        self.server_model = None
+        # self.server_model = None
 
-        self.train_data = None
-        self.test_data = None
+        # self.train_data = None
+        # self.test_data = None
         self.write_to_file = write_to_file
         self.hook = sy.TorchHook(torch)
         
@@ -164,7 +165,7 @@ class FederatedLearning():
                         # a: pixels, b: list(list(int))
                         data_.append(b[()])
                     data[dname] = {'x' : data_[1], 'y' : data_[0]}
-        self.test_data = data
+        return data
 
 
     def load_femnist_train_digits(self, data_dir):
@@ -186,7 +187,9 @@ class FederatedLearning():
                         # a: pixels, b: list(list(int))
                         data_.append(b[()])
                     data[dname] = {'x' : data_[1], 'y' : data_[0]}
-        self.workers_id, self.train_data = workers_id, data
+        # self.workers_id, self.train_data = workers_id, data
+        self.workers_id = workers_id
+        return data
 
 
     def count_digits(self):
@@ -203,7 +206,7 @@ class FederatedLearning():
             f.close()
 
 
-    def create_datasets(self, selected_workers_id):
+    def create_datasets(self, selected_workers_id, train_data, test_data):
         logging.info("Creating federated dataset for selected workers")
         
         train_datasets = []
@@ -212,11 +215,11 @@ class FederatedLearning():
         test_data_labels = torch.Tensor()
 
         for worker_id in selected_workers_id:
-            worker_record_num = len(self.train_data[worker_id]['y'])
+            worker_record_num = len(train_data[worker_id]['y'])
 
             logging.debug("Worker {} has {} records".format(worker_id, worker_record_num))
-            train_images = torch.Tensor(np.array(self.train_data[worker_id]['x'], dtype = np.single).reshape(-1, 1, 28, 28))
-            train_labels = torch.Tensor(np.array(self.train_data[worker_id]['y'], dtype = np.single))
+            train_images = torch.Tensor(np.array(train_data[worker_id]['x'], dtype = np.single).reshape(-1, 1, 28, 28))
+            train_labels = torch.Tensor(np.array(train_data[worker_id]['y'], dtype = np.single))
             print("Number of training data for user {} is {}".format(worker_id, len(train_labels)))
 
             # transform=transforms.Compose([transforms.ToTensor()])
@@ -226,8 +229,8 @@ class FederatedLearning():
 
             print("Number of training data in the BaseDataset class is {}".format(len(train_dataset.targets)))
 
-            test_images = torch.Tensor(np.array(self.test_data[worker_id]['x'], dtype = np.single).reshape(-1 , 1, 28, 28))
-            test_labels = torch.Tensor(np.array(self.test_data[worker_id]['y'], dtype = np.single))
+            test_images = torch.Tensor(np.array(test_data[worker_id]['x'], dtype = np.single).reshape(-1 , 1, 28, 28))
+            test_labels = torch.Tensor(np.array(test_data[worker_id]['y'], dtype = np.single))
             print("Number of testing data for user {} is {}".format(worker_id, len(test_labels)))
 
             test_data_images = torch.cat((test_data_images, test_images))
@@ -248,10 +251,57 @@ class FederatedLearning():
         print("Length of the test data loader (datasets): {}".format(len(test_dataset_loader.dataset)))
 
         return train_dataset_loader, test_dataset_loader
+
+
+    def create_datasets_mp(self, selected_workers_id, train_data, test_data):
+        logging.info("Creating federated dataset for selected workers")
+        
+        train_data_loaders = dict()
+        train_datasets = []
+        # test_datasets = []
+        test_data_images = torch.Tensor()
+        test_data_labels = torch.Tensor()
+
+        for worker_id in selected_workers_id:
+            worker_record_num = len(train_data[worker_id]['y'])
+
+            train_images = torch.Tensor(np.array(train_data[worker_id]['x'], dtype = np.single).reshape(-1, 1, 28, 28))
+            train_labels = torch.Tensor(np.array(train_data[worker_id]['y'], dtype = np.single))
+
+            # transform=transforms.Compose([transforms.ToTensor()])
+            train_dataset = sy.BaseDataset(train_images, train_labels).send(self.workers[worker_id])
+            train_data_loaders[worker_id] = sy.FederatedDataLoader(
+                sy.FederatedDataset([train_dataset]), batch_size = self.args.batch_size, 
+                shuffle=False, drop_last = False, **self.kwargs)
+
+            logging.debug("Number of training data in the BaseDataset class is: {} and loader: {}".format(len(train_dataset.targets), len(train_data_loaders[worker_id])))
+
+            test_images = torch.Tensor(np.array(test_data[worker_id]['x'], dtype = np.single).reshape(-1 , 1, 28, 28))
+            test_labels = torch.Tensor(np.array(test_data[worker_id]['y'], dtype = np.single))
+            logging.debug("Worker {} has {} training and {} test reocrds.".format(worker_id, len(train_labels), len(test_labels)))
+
+            test_data_images = torch.cat((test_data_images, test_images))
+            test_data_labels = torch.cat((test_data_labels, test_labels))
+
+        # train_dataset_loader = sy.FederatedDataLoader(
+            # sy.FederatedDataset(train_datasets), batch_size = self.args.batch_size, shuffle=False, drop_last = True, **self.kwargs)
+
+        # print("Length of Federated Dataset (Total number of records for all workers): {}".format(len(train_dataset_loader.federated_dataset)))
+        
+        test_dataset = sy.BaseDataset(test_data_images, test_data_labels)
+        logging.debug("Lenght of targets for test: {}".format(len(test_data_labels)))
+        logging.debug("Length of the test dataset (Basedataset): {}".format(len(test_dataset)))
+
+        test_dataset_loader = torch.utils.data.DataLoader(
+            test_dataset, batch_size=self.args.test_batch_size, shuffle=True, drop_last = False, **self.kwargs)
+        
+        logging.debug("Length of the test data loader (datasets): {}".format(len(test_dataset_loader.dataset)))
+
+        return train_data_loaders, test_dataset_loader
         
 
     # Create aggregation in server from all users.
-    def create_aggregated_data(self, workers_id_list):
+    def create_aggregated_data(self, workers_id_list, train_data):
         logging.info("Creating the aggregated data for the server from previously selected users")
         # Fraction of public data of each user, which be shared by the server
         aggregated_image = np.array([], dtype = np.single).reshape(-1, 28, 28)
@@ -259,17 +309,17 @@ class FederatedLearning():
         fraction = 0.2 
         total_samples_count = 0
         for worker_id in workers_id_list:
-            worker_samples_count = len(self.train_data[worker_id]['y'])
+            worker_samples_count = len(train_data[worker_id]['y'])
             
-            num_samples_for_server = math.floor(fraction * len(self.train_data[worker_id]['y']))
+            num_samples_for_server = math.floor(fraction * len(train_data[worker_id]['y']))
             logging.info("Sending {} from client {} with total {}".format(
                 num_samples_for_server, worker_id, worker_samples_count
             ))
             total_samples_count = total_samples_count + num_samples_for_server
             indices = random.sample(range(worker_samples_count), num_samples_for_server)
             
-            images = np.array([self.train_data[worker_id]['x'][i] for i in indices], dtype = np.single).reshape(-1, 28, 28)
-            labels = np.array([self.train_data[worker_id]['y'][i] for i in indices], dtype = np.single)
+            images = np.array([train_data[worker_id]['x'][i] for i in indices], dtype = np.single).reshape(-1, 28, 28)
+            labels = np.array([train_data[worker_id]['y'][i] for i in indices], dtype = np.single)
             aggregated_image = np.concatenate((aggregated_image, images))
             aggregated_label = np.concatenate((aggregated_label, labels))
 
@@ -519,7 +569,7 @@ class FederatedLearning():
 
 
     def train_server(self, train_server_loader, round_no, epoch_no):
-        file = None
+        # file = None
         # if self.write_to_file:
         #     file = open(self.output_prefix + "_train_server", "a")
 
@@ -550,6 +600,84 @@ class FederatedLearning():
         # Always need to get back the model
         self.getback_model(self.server_model)
         print()
+
+    def train_worker_mp(self, worker_id, worker_model, train_dataloader, m_queue, round_no, epoch_num):
+        # workers_opt = {}
+        # file = None
+        # if self.write_to_file:
+        #     file = open(self.output_prefix + "_train", "a")
+        # for ww_id in workers_id_list:
+        # for ww_id, ww in self.workers.items():
+        if worker_model.location is None \
+                or worker_model.location.id != worker_id:
+            worker_model.send(self.workers[worker_id])
+        worker_opt = optim.SGD(params=worker_model.parameters(), lr=self.args.lr)
+        for epoch in range(epoch_num):
+            for batch_idx, (data, target) in enumerate(train_dataloader):
+                worker_id_ = data.location.id
+                if worker_id != worker_id_:
+                    logging.error("Worker ID of the client {} is not match with worker id from the data {}".format(worker_id, worker_id_))
+                    return
+                worker_model.train()
+                data, target = data.to(self.device), target.to(self.device, dtype = torch.int64)
+                worker_opt.zero_grad()
+                output = worker_model(data)
+                loss = F.nll_loss(output, target)
+                loss.backward()
+                worker_opt.step()
+
+                if batch_idx % self.args.log_interval == 0:
+                    loss = loss.get()
+                    if self.write_to_file:
+                        neptune.log_metric(worker_id, loss)
+                        # TO_FILE = '{} {} {} {} {}\n'.format(round_no, epoch_no, batch_idx, data.location.id, loss)
+                        # file.write(TO_FILE)
+                    logging.info('Train Round: {}, Epoch: {} [{}] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                        round_no, epoch, worker_id, batch_idx, 
+                        batch_idx * self.args.batch_size, 
+                        len(train_dataloader) * self.args.batch_size,
+                        100. * batch_idx / len(train_dataloader), loss.item()))
+            
+        m_queue.put((worker_id, worker_model))
+        return 0
+        # Need to getback the self.workers_model
+        # if self.write_to_file:
+        #     file.close()
+
+    def train_server_mp(self, server_model, train_server_loader, m_queue, round_no, epoch_num):
+        # file = None
+        # if self.write_to_file:
+        #     file = open(self.output_prefix + "_train_server", "a")
+        self.send_model(server_model, self.server, "server")
+        server_opt = optim.SGD(server_model.parameters(), lr=self.args.lr)
+        for epoch in range(epoch_num):
+            for batch_idx, (data, target) in enumerate(train_server_loader):
+                server_model.train()
+                data, target = data.to(self.device), target.to(self.device, dtype = torch.int64)
+                server_opt.zero_grad()
+                output = server_model(data)
+                loss = F.nll_loss(output, target)
+                loss.backward()
+                server_opt.step()
+
+                if batch_idx % self.args.log_interval == 0:
+                    loss = loss.get()
+                    if self.write_to_file:
+                        neptune.log_metric('loss_server', loss)
+                        # TO_FILE = '{} {} {} {} {}\n'.format(round_no, epoch_no, batch_idx, data.location.id, loss)
+                        # file.write(TO_FILE)
+                    logging.info('Train Round: {}, Epoch: {} [server] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                        round_no, epoch, batch_idx, 
+                        batch_idx * self.args.batch_size, 
+                        len(train_server_loader) * self.args.batch_size,
+                        100. * batch_idx / len(train_server_loader), loss.item()))
+        # if self.write_to_file:
+        #     file.close()
+        # Always need to get back the model
+        self.getback_model(server_model)
+        m_queue.put(("server", server_model))
+        time.sleep(1)
+        return 0
 
 
     def test_workers(self, model, test_loader, epoch, test_name):
@@ -618,22 +746,22 @@ class FederatedLearning():
             100. * correct / len(test_loader.dataset)))
 
 
-    def find_best_weights(self, workers_to_be_used, round_no):
+    def find_best_weights(self, workers_to_be_used, models, round_no):
         # reference_model = self.server_model
         # workers_model = self.workers_model
         # if self.write_to_file:
             # file = open(self.output_prefix + "_weights", "a")
-        self.getback_model(self.server_model)
+        self.getback_model(models["server"])
         with torch.no_grad():
             reference_layers = [None] * 8
-            reference_layers[0] = self.server_model.conv1.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[1] = self.server_model.conv1.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[2] = self.server_model.conv2.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[3] = self.server_model.conv2.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[4] = self.server_model.fc1.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[5] = self.server_model.fc1.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[6] = self.server_model.fc2.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[7] = self.server_model.fc2.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[0] = models["server"].conv1.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[1] = models["server"].conv1.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[2] = models["server"].conv2.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[3] = models["server"].conv2.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[4] = models["server"].fc1.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[5] = models["server"].fc1.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[6] = models["server"].fc2.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[7] = models["server"].fc2.bias.data.numpy().copy().reshape(-1, 1).ravel()
 
             workers_params = {}
             """
@@ -790,7 +918,12 @@ class FederatedLearning():
 
     def create_server_model(self):
         logging.info("Creating a model for the server")
-        self.server_model = FLNet().to(self.device)
+        # models["server"] = FLNet().to(self.device)
+        return FLNet().to(self.device)
+
+    def create_worker_model(self, worker_id):
+        logging.debug("Creating a model for worker {}".format(worker_id))
+        return FLNet().to(self.device)
 
     def create_workers_model(self, selected_workers_id):
         logging.info("Creating a model for workers")
