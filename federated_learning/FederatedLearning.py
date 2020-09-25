@@ -601,16 +601,11 @@ class FederatedLearning():
         self.getback_model(self.server_model)
         print()
 
-    def train_worker_mp(self, worker_id, worker_model, train_dataloader, m_queue, round_no, epoch_num):
-        # workers_opt = {}
+    def train_worker_mp(self, worker_id, worker_model, train_dataloader, m_queue, model_parameters, round_no, epoch_num):
         # file = None
         # if self.write_to_file:
         #     file = open(self.output_prefix + "_train", "a")
-        # for ww_id in workers_id_list:
-        # for ww_id, ww in self.workers.items():
-        if worker_model.location is None \
-                or worker_model.location.id != worker_id:
-            worker_model.send(self.workers[worker_id])
+        self.send_model(worker_model, self.workers[worker_id], worker_id)
         worker_opt = optim.SGD(params=worker_model.parameters(), lr=self.args.lr)
         for epoch in range(epoch_num):
             for batch_idx, (data, target) in enumerate(train_dataloader):
@@ -632,17 +627,21 @@ class FederatedLearning():
                         neptune.log_metric(worker_id, loss)
                         # TO_FILE = '{} {} {} {} {}\n'.format(round_no, epoch_no, batch_idx, data.location.id, loss)
                         # file.write(TO_FILE)
-                    logging.info('Train Round: {}, Epoch: {} [{}] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                        round_no, epoch, worker_id, batch_idx, 
+                    logging.info('[{}] Train Round: {}, Epoch: {} [{}] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                        worker_id, round_no, epoch, worker_id, batch_idx, 
                         batch_idx * self.args.batch_size, 
                         len(train_dataloader) * self.args.batch_size,
                         100. * batch_idx / len(train_dataloader), loss.item()))
             
-        m_queue.put((worker_id, worker_model))
-        return 0
+        self.getback_model(worker_model)
+        # print("[TRA] ------------- {} ----------------> {}".format(worker_id, worker_model.conv1.weight.data.numpy().shape))
+        self.export_model_layers(worker_model, model_parameters)
+        # print("Sample item in shared memory {}: {}".format(worker_id, model_parameters[23]))
+        # m_queue.put((worker_id, worker_model))
         # Need to getback the self.workers_model
         # if self.write_to_file:
         #     file.close()
+        return 0
 
     def train_server_mp(self, server_model, train_server_loader, m_queue, round_no, epoch_num):
         # file = None
@@ -666,20 +665,60 @@ class FederatedLearning():
                         neptune.log_metric('loss_server', loss)
                         # TO_FILE = '{} {} {} {} {}\n'.format(round_no, epoch_no, batch_idx, data.location.id, loss)
                         # file.write(TO_FILE)
-                    logging.info('Train Round: {}, Epoch: {} [server] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                        round_no, epoch, batch_idx, 
+                    logging.info('[{}] Train Round: {}, Epoch: {} [server] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                        "server", round_no, epoch, batch_idx, 
                         batch_idx * self.args.batch_size, 
                         len(train_server_loader) * self.args.batch_size,
                         100. * batch_idx / len(train_server_loader), loss.item()))
+        # print("[FUN1] data: \n{}".format(server_model.fc2.bias.data))
         # if self.write_to_file:
         #     file.close()
         # Always need to get back the model
         self.getback_model(server_model)
-        m_queue.put(("server", server_model))
-        time.sleep(1)
+        # print(server_model.location)
+        # aa = server_model.get().copy()
+        # print("[FUN2] data: \n{}".format(type(server_model.fc2.bias.data)))
+        # print(aa.location)
+        # self.export_model_layers(server_model, model_parameters)
+        # print("Sample item in shared memory: {}".format(model_parameters[23]))
+        # tmp_model = FLNet().to(self.device)
+        # m_queue.put(tmp_model)
+        m_queue.put(("server", server_model.fc2.bias.data.numpy()))
         return 0
 
+    # def get_model_layers_shape(self, model):
+    #     params_shape = [[] for i in range(8)]
+    #     params_shape[0] = { "layer_shape" : model.conv1.weight.data.numpy().shape, "layer_shape_flat" : model.conv1.weight.data.numpy().reshape(-1, 1).shape}
+    #     params_shape[1] = {"layer_shape" : model.conv1.bias.data.numpy().shape, "layer_shape_flat" : model.conv1.bias.data.numpy().reshape(-1, 1).shape}
+    #     params_shape[2] = {"layer_shape" : model.conv2.weight.data.numpy().shape, "layer_shape_flat" : model.conv2.weight.data.numpy().reshape(-1, 1).shape}
+    #     params_shape[3] = {"layer_shape" : model.conv2.bias.data.numpy().shape, "layer_shape_flat" : model.conv2.bias.data.numpy().reshape(-1, 1).shape}
+    #     params_shape[4] = {"layer_shape" : model.fc1.weight.data.numpy().shape, "layer_shape_flat" : model.fc1.weight.data.numpy().reshape(-1, 1).shape}
+    #     params_shape[5] = {"layer_shape" : model.fc1.bias.data.numpy().shape, "layer_shape_flat" : model.fc1.bias.data.numpy().reshape(-1, 1).shape}
+    #     params_shape[6] = {"layer_shape" : model.fc2.weight.data.numpy().shape, "layer_shape_flat" : model.fc2.weight.data.numpy().reshape(-1, 1).shape}
+    #     params_shape[7] = {"layer_shape" : model.fc2.bias.data.numpy().shape, "layer_shape_flat" : model.fc2.bias.data.numpy().reshape(-1, 1).shape}
+    #     logging.debug("Shape Layer [0]: {}, The flat shape: {}".format(params_shape[0]["layer_shape"], params_shape[0]["layer_shape_flat"]))
+    #     logging.debug("Shape Layer [7]: {}, The flat shape: {}".format(params_shape[7]["layer_shape"], params_shape[7]["layer_shape_flat"]))
+    #     return params_shape
 
+    # def export_model_layers(self, model, model_parameters):
+    #     logging.debug("Total layer size {}".format(len(model_parameters)))
+    #     tmp_params = [[] for i in range(8)]
+    #     tmp_params[0] = model.conv1.weight.data.numpy().copy().reshape(-1, 1)
+    #     tmp_params[1] = model.conv1.bias.data.numpy().copy().reshape(-1, 1)
+    #     tmp_params[2] = model.conv2.weight.data.numpy().copy().reshape(-1, 1)
+    #     tmp_params[3] = model.conv2.bias.data.numpy().copy().reshape(-1, 1)
+    #     tmp_params[4] = model.fc1.weight.data.numpy().copy().reshape(-1, 1)
+    #     tmp_params[5] = model.fc1.bias.data.numpy().copy().reshape(-1, 1)
+    #     tmp_params[6] = model.fc2.weight.data.numpy().copy().reshape(-1, 1)
+    #     tmp_params[7] = model.fc2.bias.data.numpy().copy().reshape(-1, 1)
+    #     idx = 0
+    #     for layer in tmp_params:
+    #         idx_start = idx
+    #         for item in layer:
+    #             model_parameters[idx] = item
+    #             idx += 1
+    #         logging.debug("Layer items: {}. INDEX from {} to {}".format(len(layer), idx_start, idx))
+        
     def test_workers(self, model, test_loader, epoch, test_name):
         self.getback_model(model)
         model.eval()
@@ -715,7 +754,7 @@ class FederatedLearning():
             test_name, test_loss, correct, len(test_loader.dataset),
             100. * correct / len(test_loader.dataset)))
 
-    def test(self, model, test_loader, epoch, test_name):
+    def test(self, model, test_loader, test_name):
         # if fl.write_to_file:
             # file = open(self.output_prefix + "_test", "a")
         model.eval()
@@ -754,6 +793,7 @@ class FederatedLearning():
         self.getback_model(models["server"])
         with torch.no_grad():
             reference_layers = [None] * 8
+            print(models["server"].conv1.weight.data.numpy().shape)
             reference_layers[0] = models["server"].conv1.weight.data.numpy().copy().reshape(-1, 1).ravel()
             reference_layers[1] = models["server"].conv1.bias.data.numpy().copy().reshape(-1, 1).ravel()
             reference_layers[2] = models["server"].conv2.weight.data.numpy().copy().reshape(-1, 1).ravel()
@@ -780,9 +820,9 @@ class FederatedLearning():
                 convW0_22
             """
             for worker_id in workers_to_be_used:
-            # for worker_id, worker_model in self.workers_model.items():
-                worker_model = self.workers_model[worker_id]
+                worker_model = models[worker_id]
                 self.getback_model(worker_model)
+                print("[OPT] ------------- {} ----------------> {}".format(worker_id, models[worker_id].conv1.weight.data.numpy().shape))
                 workers_params[worker_id] = [[] for i in range(8)]
                 workers_params[worker_id][0] = worker_model.conv1.weight.data.numpy().copy().reshape(-1, 1)
                 workers_params[worker_id][1] = worker_model.conv1.bias.data.numpy().copy().reshape(-1, 1)
@@ -793,12 +833,12 @@ class FederatedLearning():
                 workers_params[worker_id][6] = worker_model.fc2.weight.data.numpy().copy().reshape(-1, 1)
                 workers_params[worker_id][7] = worker_model.fc2.bias.data.numpy().copy().reshape(-1, 1)
 
-            # logging.debug("workers_param shape: {}".format(len(workers_params)))
-            # for key in workers_params:
-            #     logging.debug("workers_param[{}]: {}".format(key, len(workers_params[key])))
-            #     if key == "worker0":
-            #         for i in range(0, len(workers_params[key])):
-            #             logging.debug("workers_param[{}][{}]: {}".format(key, i, len(workers_params[key][i])))
+            logging.debug("workers_param shape: {}".format(len(workers_params)))
+            for key in workers_params:
+                logging.debug("workers_param[{}]: {}".format(key, len(workers_params[key])))
+                if key == workers_to_be_used[0]:
+                    for i in range(0, len(workers_params[key])):
+                        logging.debug("workers_param[{}][{}]: {}".format(key, i, len(workers_params[key][i])))
             """
             --> conv1.weight
             workers_all_params[0] =
@@ -833,7 +873,7 @@ class FederatedLearning():
             # for i in range(len(workers_all_params)):
             #     logging.debug("workers_all_params[{}]: {}".format(i, workers_all_params[i].shape))
 
-            W = cp.Variable(len(self.workers_model))
+            W = cp.Variable(len(workers_to_be_used))
 
             objective = cp.Minimize(cp.norm2(cp.matmul(workers_all_params[0], W) - reference_layers[0]) +
                                     cp.norm2(cp.matmul(workers_all_params[1], W) - reference_layers[1]) +
@@ -859,9 +899,10 @@ class FederatedLearning():
             return W.value
 
 
-    def update_models(self, alpha, W, server_model, workers_model, workers_to_be_used):
-        self.getback_model(workers_model, workers_to_be_used)
-        self.getback_model(server_model)
+    def update_models(self, alpha, W, models, workers_to_be_used):
+        for worker_id, worker_model in models.items():
+            self.getback_model(worker_model)
+        
         tmp_model = FLNet().to(self.device)
 
         with torch.no_grad():
@@ -876,7 +917,7 @@ class FederatedLearning():
 
             counter = 0
             for worker_id in workers_to_be_used:
-                worker_model = workers_model[worker_id]
+                worker_model = models[worker_id]
                 tmp_model.conv1.weight.data = (
                         tmp_model.conv1.weight.data + W[counter] * worker_model.conv1.weight.data)
                 tmp_model.conv1.bias.data = (
@@ -895,26 +936,27 @@ class FederatedLearning():
                         tmp_model.fc2.bias.data + W[counter] * worker_model.fc2.bias.data)
                 counter = counter + 1
 
-
-            server_model.conv1.weight.data = alpha * server_model.conv1.weight.data + (1 - alpha) * tmp_model.conv1.weight.data
-            server_model.conv1.bias.data = alpha * server_model.conv1.bias.data + (1 - alpha) * tmp_model.conv1.bias.data
-            server_model.conv2.weight.data = alpha * server_model.conv2.weight.data + (1 - alpha) * tmp_model.conv2.weight.data
-            server_model.conv2.bias.data = alpha * server_model.conv2.bias.data + (1 - alpha) * tmp_model.conv2.bias.data
-            server_model.fc1.weight.data = alpha * server_model.fc1.weight.data + (1 - alpha) * tmp_model.fc1.weight.data
-            server_model.fc1.bias.data = alpha * server_model.fc1.bias.data + (1 - alpha) * tmp_model.fc1.bias.data
-            server_model.fc2.weight.data = alpha * server_model.fc2.weight.data + (1 - alpha) * tmp_model.fc2.weight.data
-            server_model.fc2.bias.data = alpha * server_model.fc2.bias.data + (1 - alpha) * tmp_model.fc2.bias.data
+            models["server"].conv1.weight.data = alpha * models["server"].conv1.weight.data + (1 - alpha) * tmp_model.conv1.weight.data
+            models["server"].conv1.bias.data = alpha * models["server"].conv1.bias.data + (1 - alpha) * tmp_model.conv1.bias.data
+            models["server"].conv2.weight.data = alpha * models["server"].conv2.weight.data + (1 - alpha) * tmp_model.conv2.weight.data
+            models["server"].conv2.bias.data = alpha * models["server"].conv2.bias.data + (1 - alpha) * tmp_model.conv2.bias.data
+            models["server"].fc1.weight.data = alpha * models["server"].fc1.weight.data + (1 - alpha) * tmp_model.fc1.weight.data
+            models["server"].fc1.bias.data = alpha * models["server"].fc1.bias.data + (1 - alpha) * tmp_model.fc1.bias.data
+            models["server"].fc2.weight.data = alpha * models["server"].fc2.weight.data + (1 - alpha) * tmp_model.fc2.weight.data
+            models["server"].fc2.bias.data = alpha * models["server"].fc2.bias.data + (1 - alpha) * tmp_model.fc2.bias.data
 
             # for worker_id in workers_model.keys():
             for worker_id in workers_to_be_used:
-                workers_model[worker_id].conv1.weight.data = server_model.conv1.weight.data
-                workers_model[worker_id].conv1.bias.data = server_model.conv1.bias.data
-                workers_model[worker_id].conv2.weight.data = server_model.conv2.weight.data
-                workers_model[worker_id].conv2.bias.data = server_model.conv2.bias.data
-                workers_model[worker_id].fc1.weight.data = server_model.fc1.weight.data
-                workers_model[worker_id].fc1.bias.data = server_model.fc1.bias.data
-                workers_model[worker_id].fc2.weight.data = server_model.fc2.weight.data
-                workers_model[worker_id].fc2.bias.data = server_model.fc2.bias.data
+                models[worker_id].conv1.weight.data = models["server"].conv1.weight.data
+                models[worker_id].conv1.bias.data = models["server"].conv1.bias.data
+                models[worker_id].conv2.weight.data = models["server"].conv2.weight.data
+                models[worker_id].conv2.bias.data = models["server"].conv2.bias.data
+                models[worker_id].fc1.weight.data = models["server"].fc1.weight.data
+                models[worker_id].fc1.bias.data = models["server"].fc1.bias.data
+                models[worker_id].fc2.weight.data = models["server"].fc2.weight.data
+                models[worker_id].fc2.bias.data = models["server"].fc2.bias.data
+
+        return models
 
     def create_server_model(self):
         logging.info("Creating a model for the server")
