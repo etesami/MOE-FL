@@ -25,7 +25,7 @@ FEMNIST_PATH="/home/ubuntu/leaf/data/femnist/data"
 FEMNIST_PATH_GOOGLE="/home/ubuntu/data/fed_google"
 NUM_TRAIN_WORKERS = 5
 
-EPOCH_NUM = 2
+EPOCH_NUM = 10
 ROUNDS = 1
 LAYER = 8
 models = dict()
@@ -118,69 +118,43 @@ train_data_loaders, test_data_loader = fl.create_datasets_mp(workers_to_be_used,
 m_queue = mq()
 for round_no in range(0, ROUNDS):
     processes = dict()
-    # model_params = dict()
-    # model_params["server"] = Array(ctypes.c_float, 431080)
-    # new_model = models['server'].copy()
     server_process = Process(target=fl.train_server_mp, \
         args=(models['server'], server_data_loader, m_queue, round_no, EPOCH_NUM,))
     server_process.start()
     processes["server"] = server_process
 
     # for worker_id in workers_to_be_used:
-    #     model_params[worker_id] = Array(ctypes.c_float, 431080)
     #     worker_p = Process(
     #         target=fl.train_worker_mp, \
-    #         args=(worker_id, 
-    #         models[worker_id], train_data_loaders[worker_id], m_queue, model_params[worker_id], round_no, EPOCH_NUM,))
+    #         args=(worker_id, models[worker_id], train_data_loaders[worker_id], m_queue, round_no, EPOCH_NUM,))
     #     worker_p.start()
     #     processes[worker_id] = worker_p
-    print("[BEF0] data: \n{}".format(models["server"].fc2.bias.data))
-    # time.sleep(15)
-    for w_id in processes:
-        processes[w_id].join()
+    # print("[BEF0] data: \n{}".format(models["server"].conv1.weight.data[0:1]))
+    # counter = (NUM_TRAIN_WORKERS + 1)
+    models_data = dict()
+    counter = 1
+    data_server = None
+    while counter > 0:
         try:
             entry = m_queue.get(timeout=5)
             id_ = entry[0]
-            data_np = entry[1]
-            # if model.location is not None:
-            #     print("Loc: {}".format(model.location))
-            #     model.get()
-            # # fl.getback_model(model)
-            # models[id_] = model
-            # print("[AFT] ------------- {} ----------------> {}".format(id_, models[id_].conv1.weight.data.numpy().shape))
-            # print("[AFT1] data: \n{}".format(data_np))
-            tt = torch.from_numpy(data_np)
-            models["server"].fc2.bias.data = tt
-            # counter -= 1
-            # logging.info("Model id: {}, counter: {}".format(id, counter))
+            model_params = entry[1]
+            models_data[id_] = model_params
+            logging.info("Model id: {}, data: {}".format(id_, len(model_params)))
+            fl.expand_model_layers(model_params)
+            counter -= 1
         except queue.Empty:
             logging.debug("Empty queue! Not should have been here!")
-        # print("LEN (user): {}".format(len(model_params)))
-        # print("LEN For Each User: {}".format(len(model_params[worker_id])))
-        # copy_model_params(layers_shape, model_params[worker_id], models[worker_id], worker_id)
-    print("[BEF1] data: \n{}".format(models["server"].fc2.bias.data))
-    # counter = (NUM_TRAIN_WORKERS + 1)
-    # counter = 1
-    # models.clear()
-    # while counter > 0:
-    #     try:
-    #         entry = m_queue.get()
-    #         id_ = entry[0]
-    #         model = entry[1]
-    #         if model.location is not None:
-    #             print("Loc: {}".format(model.location))
-    #             model.get()
-    #         # fl.getback_model(model)
-    #         models[id_] = model
-    #         print("[AFT] ------------- {} ----------------> {}".format(id_, models[id_].conv1.weight.data.numpy().shape))
-    #         counter -= 1
-    #         # logging.info("Model id: {}, counter: {}".format(id, counter))
-    #     except queue.Empty:
-    #         logging.debug("Empty queue! Not should have been here!")
 
-    # print("[EXT] Sample item in shared memory: {}".format(
-    #     [23]))
-        # w_process.terminate()
+    for w_id in processes:
+        processes[w_id].join()
+    
+    if data_server is not None:
+        print("[AFT0] data: \n{}".format(data_server[0][0:5]))
+    else:
+        print("ERROR")
+
+    fl.find_best_weights(models_data)
     
 
     

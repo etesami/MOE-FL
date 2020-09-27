@@ -601,7 +601,7 @@ class FederatedLearning():
         self.getback_model(self.server_model)
         print()
 
-    def train_worker_mp(self, worker_id, worker_model, train_dataloader, m_queue, model_parameters, round_no, epoch_num):
+    def train_worker_mp(self, worker_id, worker_model, train_dataloader, m_queue, round_no, epoch_num):
         # file = None
         # if self.write_to_file:
         #     file = open(self.output_prefix + "_train", "a")
@@ -635,9 +635,9 @@ class FederatedLearning():
             
         self.getback_model(worker_model)
         # print("[TRA] ------------- {} ----------------> {}".format(worker_id, worker_model.conv1.weight.data.numpy().shape))
-        self.export_model_layers(worker_model, model_parameters)
+        model_params = self.compress_model_layers(worker_model)
         # print("Sample item in shared memory {}: {}".format(worker_id, model_parameters[23]))
-        # m_queue.put((worker_id, worker_model))
+        m_queue.put((worker_id, model_params))
         # Need to getback the self.workers_model
         # if self.write_to_file:
         #     file.close()
@@ -670,55 +670,67 @@ class FederatedLearning():
                         batch_idx * self.args.batch_size, 
                         len(train_server_loader) * self.args.batch_size,
                         100. * batch_idx / len(train_server_loader), loss.item()))
-        # print("[FUN1] data: \n{}".format(server_model.fc2.bias.data))
         # if self.write_to_file:
         #     file.close()
         # Always need to get back the model
         self.getback_model(server_model)
-        # print(server_model.location)
-        # aa = server_model.get().copy()
-        # print("[FUN2] data: \n{}".format(type(server_model.fc2.bias.data)))
-        # print(aa.location)
-        # self.export_model_layers(server_model, model_parameters)
         # print("Sample item in shared memory: {}".format(model_parameters[23]))
         # tmp_model = FLNet().to(self.device)
-        # m_queue.put(tmp_model)
-        m_queue.put(("server", server_model.fc2.bias.data.numpy()))
+        # m_queue.put(server_model)
+        m_queue.put(("server", self.compress_model_layers(server_model)))
         return 0
 
-    # def get_model_layers_shape(self, model):
-    #     params_shape = [[] for i in range(8)]
-    #     params_shape[0] = { "layer_shape" : model.conv1.weight.data.numpy().shape, "layer_shape_flat" : model.conv1.weight.data.numpy().reshape(-1, 1).shape}
-    #     params_shape[1] = {"layer_shape" : model.conv1.bias.data.numpy().shape, "layer_shape_flat" : model.conv1.bias.data.numpy().reshape(-1, 1).shape}
-    #     params_shape[2] = {"layer_shape" : model.conv2.weight.data.numpy().shape, "layer_shape_flat" : model.conv2.weight.data.numpy().reshape(-1, 1).shape}
-    #     params_shape[3] = {"layer_shape" : model.conv2.bias.data.numpy().shape, "layer_shape_flat" : model.conv2.bias.data.numpy().reshape(-1, 1).shape}
-    #     params_shape[4] = {"layer_shape" : model.fc1.weight.data.numpy().shape, "layer_shape_flat" : model.fc1.weight.data.numpy().reshape(-1, 1).shape}
-    #     params_shape[5] = {"layer_shape" : model.fc1.bias.data.numpy().shape, "layer_shape_flat" : model.fc1.bias.data.numpy().reshape(-1, 1).shape}
-    #     params_shape[6] = {"layer_shape" : model.fc2.weight.data.numpy().shape, "layer_shape_flat" : model.fc2.weight.data.numpy().reshape(-1, 1).shape}
-    #     params_shape[7] = {"layer_shape" : model.fc2.bias.data.numpy().shape, "layer_shape_flat" : model.fc2.bias.data.numpy().reshape(-1, 1).shape}
-    #     logging.debug("Shape Layer [0]: {}, The flat shape: {}".format(params_shape[0]["layer_shape"], params_shape[0]["layer_shape_flat"]))
-    #     logging.debug("Shape Layer [7]: {}, The flat shape: {}".format(params_shape[7]["layer_shape"], params_shape[7]["layer_shape_flat"]))
-    #     return params_shape
+    def get_model_params_count(self, layer_no):
+        tmp_model = FLNet().to(self.device)
+        if layer_no == 0:
+            return tmp_model.conv1.weight.data.numel()
+        elif layer_no == 1:
+            return tmp_model.conv1.bias.data.numel()
+        elif layer_no == 2:
+            return tmp_model.conv2.weight.data.numel()
+        elif layer_no == 3:
+            return tmp_model.conv2.bias.data.numel()
+        elif layer_no == 4:
+            return tmp_model.fc1.weight.data.numel()
+        elif layer_no == 5:
+            return tmp_model.fc1.bias.data.numel()
+        elif layer_no == 6:
+            return tmp_model.fc2.weight.data.numel()
+        elif layer_no == 7:
+            return tmp_model.fc2.bias.data.numel()
+        else:
+            raise Exception("Wrong layer number.")
 
-    # def export_model_layers(self, model, model_parameters):
-    #     logging.debug("Total layer size {}".format(len(model_parameters)))
-    #     tmp_params = [[] for i in range(8)]
-    #     tmp_params[0] = model.conv1.weight.data.numpy().copy().reshape(-1, 1)
-    #     tmp_params[1] = model.conv1.bias.data.numpy().copy().reshape(-1, 1)
-    #     tmp_params[2] = model.conv2.weight.data.numpy().copy().reshape(-1, 1)
-    #     tmp_params[3] = model.conv2.bias.data.numpy().copy().reshape(-1, 1)
-    #     tmp_params[4] = model.fc1.weight.data.numpy().copy().reshape(-1, 1)
-    #     tmp_params[5] = model.fc1.bias.data.numpy().copy().reshape(-1, 1)
-    #     tmp_params[6] = model.fc2.weight.data.numpy().copy().reshape(-1, 1)
-    #     tmp_params[7] = model.fc2.bias.data.numpy().copy().reshape(-1, 1)
-    #     idx = 0
-    #     for layer in tmp_params:
-    #         idx_start = idx
-    #         for item in layer:
-    #             model_parameters[idx] = item
-    #             idx += 1
-    #         logging.debug("Layer items: {}. INDEX from {} to {}".format(len(layer), idx_start, idx))
-        
+    def expand_model_layers(self, model_params):
+        params = [[] for i in range(len(model_params))]
+        tmp_model = FLNet().to(self.device)
+        idx = 0
+        layer_no = 0
+        for layer in model_params:
+            layer_item_count = self.get_model_params_count(layer_no)
+            params[layer_no] = torch.Tensor(layer[idx : idx + layer_item_count])
+            logging.debug("Layer {} items: {}. INDEX from {} to {}".format(layer_no, layer_item_count, idx, idx + layer_item_count))
+            idx += layer_item_count + 1
+            layer_no += 1
+
+
+    def compress_model_layers(self, model):
+        LAYERS = 8
+        logging.info("Prepare trained model to be returned and updated adter all epochs")
+        tmp_params = [[] for i in range(LAYERS)]
+        tmp_params[0] = model.conv1.weight.data.numpy().copy().reshape(-1, 1)
+        tmp_params[1] = model.conv1.bias.data.numpy().copy().reshape(-1, 1)
+        tmp_params[2] = model.conv2.weight.data.numpy().copy().reshape(-1, 1)
+        tmp_params[3] = model.conv2.bias.data.numpy().copy().reshape(-1, 1)
+        tmp_params[4] = model.fc1.weight.data.numpy().copy().reshape(-1, 1)
+        tmp_params[5] = model.fc1.bias.data.numpy().copy().reshape(-1, 1)
+        tmp_params[6] = model.fc2.weight.data.numpy().copy().reshape(-1, 1)
+        tmp_params[7] = model.fc2.bias.data.numpy().copy().reshape(-1, 1)
+        for idx in range(len(tmp_params)):
+            logging.debug("Compressing layer {} with {} items.".format(idx, len(tmp_params[idx])))
+        return tmp_params
+
+    
     def test_workers(self, model, test_loader, epoch, test_name):
         self.getback_model(model)
         model.eval()
@@ -785,12 +797,10 @@ class FederatedLearning():
             100. * correct / len(test_loader.dataset)))
 
 
-    def find_best_weights(self, workers_to_be_used, models, round_no):
-        # reference_model = self.server_model
-        # workers_model = self.workers_model
+    def find_best_weights(self, models_data):
         # if self.write_to_file:
             # file = open(self.output_prefix + "_weights", "a")
-        self.getback_model(models["server"])
+        # self.getback_model(models["server"])
         with torch.no_grad():
             reference_layers = [None] * 8
             print(models["server"].conv1.weight.data.numpy().shape)
