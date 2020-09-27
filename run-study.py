@@ -24,38 +24,11 @@ EMNIST_PATH = "/home/ubuntu/EMNIST/"
 FEMNIST_PATH="/home/ubuntu/leaf/data/femnist/data"
 FEMNIST_PATH_GOOGLE="/home/ubuntu/data/fed_google"
 NUM_TRAIN_WORKERS = 5
-
-EPOCH_NUM = 10
+ALPHA = 0.7
+EPOCH_NUM = 5
 ROUNDS = 1
 LAYER = 8
 models = dict()
-
-
-# def copy_model_params(layers_shape, model_params, model, worker_id):
-#     LAYERS = 8
-#     print("-" * 20)
-#     logging.debug("[{}] BEFOR LEN: {}".format(worker_id, len(model.fc2.bias.data)))
-#     logging.debug("[{}] BEFOR: {}".format(worker_id, model.fc2.bias.data[0:10]))
-#     new_model_params = [[] for i in range(LAYERS)]
-#     idx = 0
-#     for ii in range(LAYERS):
-#         number_items = layers_shape[ii]['layer_shape_flat'][0]
-#         shape_ = layers_shape[ii]['layer_shape']
-#         new_model_params[ii] = np.array(model_params[idx:idx + number_items]).reshape(shape_)
-#         logging.debug("Copy from layer {} items from {} to {}. SHAPE: {}".format(ii, idx, idx + number_items, shape_))
-#         idx += number_items
-#     model.conv1.weight.data = new_model_params[0]
-#     model.conv1.bias.data = new_model_params[1]
-#     model.conv2.weight.data = new_model_params[2]
-#     model.conv2.bias.data = new_model_params[3]
-#     model.fc1.weight.data = new_model_params[4]
-#     model.fc1.bias.data = new_model_params[5]
-#     model.fc2.weight.data = new_model_params[6]
-#     model.fc2.bias.data = new_model_params[7]
-
-#     logging.debug("[{}] BEFOR: {}".format(worker_id, len(model.fc2.bias.data)))
-#     logging.debug("[{}] BEFOR: {}".format(worker_id, model.fc2.bias.data[0:10]))
-#     print("-" * 20)
 
 fl = FederatedLearning(
         epochs_num = EPOCH_NUM, 
@@ -93,10 +66,6 @@ for worker_id in workers_to_be_used:
     else:
         logging.debug("The model for worker {} exists".format(worker_id))
 
-
-# layers_shape = fl.get_model_layers_shape(models['server'])
-
-
 server_data_loader = fl.create_aggregated_data(workers_to_be_used, train_data)
 train_data_loaders, test_data_loader = fl.create_datasets_mp(workers_to_be_used, train_data, test_data)
 
@@ -123,53 +92,41 @@ for round_no in range(0, ROUNDS):
     server_process.start()
     processes["server"] = server_process
 
-    # for worker_id in workers_to_be_used:
-    #     worker_p = Process(
-    #         target=fl.train_worker_mp, \
-    #         args=(worker_id, models[worker_id], train_data_loaders[worker_id], m_queue, round_no, EPOCH_NUM,))
-    #     worker_p.start()
-    #     processes[worker_id] = worker_p
-    # print("[BEF0] data: \n{}".format(models["server"].conv1.weight.data[0:1]))
-    # counter = (NUM_TRAIN_WORKERS + 1)
+    for worker_id in workers_to_be_used:
+        worker_p = Process(
+            target=fl.train_worker_mp, \
+            args=(worker_id, models[worker_id], train_data_loaders[worker_id], m_queue, round_no, EPOCH_NUM,))
+        worker_p.start()
+        processes[worker_id] = worker_p
+    counter = (NUM_TRAIN_WORKERS + 1)
     models_data = dict()
-    counter = 1
-    data_server = None
     while counter > 0:
         try:
             entry = m_queue.get(timeout=5)
-            id_ = entry[0]
-            model_params = entry[1]
-            models_data[id_] = model_params
-            logging.info("Model id: {}, data: {}".format(id_, len(model_params)))
-            fl.expand_model_layers(model_params)
+            logging.info("Queue recieved: Model id: {}, data: {}".format(entry[0], len(entry[1])))
+            models_data[entry[0]] = entry[1]
             counter -= 1
         except queue.Empty:
             logging.debug("Empty queue! Not should have been here!")
 
     for w_id in processes:
         processes[w_id].join()
+        processes[w_id].terminate()
     
-    if data_server is not None:
-        print("[AFT0] data: \n{}".format(data_server[0][0:5]))
+    W = None
+    if arguments['--avg']:
+        W = [0.1] * len(workers_to_be_used)
+    elif arguments['--opt']:
+        W = fl.find_best_weights(models_data)
     else:
-        print("ERROR")
+        logging.error("Not expected this mode!")
+        sys.exit(1)
 
-    fl.find_best_weights(models_data)
-    
-
-    
-    # W = None
-    # if arguments['--avg']:
-    #     W = [0.1] * len(workers_to_be_used)
-    # elif arguments['--opt']:
-    #     W = fl.find_best_weights(workers_to_be_used, models, round_no)
-    # else:
-    #     logging.error("Not expected this mode!")
-    #     sys.exit(1)
-    # # Apply the server model to the test dataset
-    # models = fl.update_models(0.7, W, models, workers_to_be_used)
+    logging.info("Updating models.")
+    # Apply the server model to the test dataset
+    models = fl.update_models(ALPHA, W, models_data)
     # fl.test(models["server"], test_data_loader, "server")
-        # fl.test(fl.server_model, test_data_loader, epoch_no, "averaged")
+    #     fl.test(fl.server_model, test_data_loader, epoch_no, "averaged")
 
     # # for worker_id in workers_to_be_used_:
     # #     fl.getback_model(fl.workers_model[worker_id])
