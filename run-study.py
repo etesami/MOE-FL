@@ -2,9 +2,12 @@
 Usage: run-study.py \n\t\t(--avg | --opt) \n\t\t--attack=<attack-type> \n\t\t[--workers-percentage=<workers-percentage>] \n\t\t[--data-percentage=<data-percentage>]  \n\t\t--log=<True/False> \n\t\t--output-file=<output-filename>
 """
 from docopt import docopt
-from federated_learning.FederatedLearning import FederatedLearning
+# from federated_learning.FederatedLearning import FederatedLearning
+from federated_learning import testtest
 import logging
+import syft as sy
 import random
+from collections import defaultdict
 import ast
 import sys
 arguments = docopt(__doc__)
@@ -23,51 +26,54 @@ MNIST_PATH = "/home/ubuntu/data/MNIST/processed_manual"
 EMNIST_PATH = "/home/ubuntu/EMNIST/"
 FEMNIST_PATH="/home/ubuntu/leaf/data/femnist/data"
 FEMNIST_PATH_GOOGLE="/home/ubuntu/data/fed_google"
-NUM_TRAIN_WORKERS = 30
+NUM_TRAIN_WORKERS = 5
 ALPHA = 0.7
-EPOCH_NUM = 1
-ROUNDS = 2
+EPOCH_NUM = 5
+ROUNDS = 5
 LAYER = 8
 models = dict()
 
-fl = FederatedLearning(
-        epochs_num = EPOCH_NUM, 
-        output_prefix = OUTPUT_PATH_PREFIX + arguments['--output-file'],
-        data_path = EMNIST_PATH, 
-        write_to_file = True if arguments['--log'] == "true" or arguments['--log'] == "True" else False,
-        log_level = logging.DEBUG)
+# fl = FederatedLearning(
+#         epochs_num = EPOCH_NUM, 
+#         output_prefix = OUTPUT_PATH_PREFIX + arguments['--output-file'],
+#         data_path = EMNIST_PATH, 
+#         write_to_file = True if arguments['--log'] == "true" or arguments['--log'] == "True" else False,
+#         log_level = print)
 
 
-if fl.write_to_file:
-    neptune.init('ehsan/sandbox')
-    neptune.create_experiment(name='evaluation_01')
+# if fl.write_to_file:
+#     neptune.init('ehsan/sandbox')
+#     neptune.create_experiment(name='evaluation_01')
 
 
-train_data = fl.load_femnist_train_digits(FEMNIST_PATH_GOOGLE)
-logging.info("Total workers size: {}".format(len(fl.workers_id)))
-test_data = fl.load_femnist_test_digits(FEMNIST_PATH_GOOGLE)
+workers_id, train_data = testtest.load_femnist_train_digits(FEMNIST_PATH_GOOGLE)
+print("Total workers size: {}".format(len(workers_id)))
+test_data = testtest.load_femnist_test_digits(FEMNIST_PATH_GOOGLE)
 
 
 random.seed("12345")
-fl.create_server()
+# fl.create_server()
 
 # # [1, 3, 6, 9]
-workers_to_be_used_idx = random.sample(range(len(fl.workers_id)), NUM_TRAIN_WORKERS)
+workers_to_be_used_idx = random.sample(range(len(workers_id)), NUM_TRAIN_WORKERS)
 # # ['f_353', 'f_345']
-workers_to_be_used = [fl.workers_id[i] for i in workers_to_be_used_idx]
-fl.create_workers(workers_to_be_used)
+workers_to_be_used = [workers_id[i] for i in workers_to_be_used_idx]
+# fl.create_workers(workers_to_be_used)
 
-logging.debug("First 10 labels of the first selected user: {}".format(train_data[workers_to_be_used[0]]['y'][0:10]))
+print("First 10 labels of the first selected user: {}".format(train_data[workers_to_be_used[0]]['y'][0:10]))
 
-models['server'] = fl.create_server_model()
-for worker_id in workers_to_be_used:
-    if worker_id not in models:
-        models[worker_id] = fl.create_worker_model(worker_id)
-    else:
-        logging.debug("The model for worker {} exists".format(worker_id))
+# models['server'] = fl.create_server_model()
+# for worker_id in workers_to_be_used:
+#     if worker_id not in models:
+#         models[worker_id] = fl.create_worker_model(worker_id)
+#     else:
+#         print("The model for worker {} exists".format(worker_id))
 
-server_data_loader = fl.create_aggregated_data(workers_to_be_used, train_data)
-train_data_loaders, test_data_loader = fl.create_datasets_mp(workers_to_be_used, train_data, test_data)
+# server_data_loader
+hook = sy.TorchHook(torch)  
+aggregated_ds = testtest.create_aggregated_data(workers_to_be_used, train_data)
+# train_data_loaders, test_data_loader 
+train_dss, test_dl = testtest.create_datasets_mp(workers_to_be_used, train_data, test_data)
 
 
 # if arguments['--attack'] == "1":
@@ -80,23 +86,25 @@ train_data_loaders, test_data_loader = fl.create_datasets_mp(workers_to_be_used,
 #     # data_percentage = int(arguments['--data-percentage'])
 #     # a = fl.attack_permute_labels_collaborative(mal_users_list, 40)
 # else:
-#     logging.info("** No attack is performed on the dataset.")
+#     print("** No attack is performed on the dataset.")
 #     sys.exit(1)
 
 
 m_queue = mq()
 processes = dict()
+models_data = defaultdict(lambda : None)
+
 for round_no in range(0, ROUNDS):
-    logging.debug("Round {} started.".format(round_no))
-    server_process = Process(target=fl.train_server_mp, \
-        args=(models['server'], server_data_loader, m_queue, round_no, EPOCH_NUM,))
+    print("Round {} started.".format(round_no))
+    server_process = Process(target=testtest.train_server_mp, \
+        args=(models_data["server"], aggregated_ds, m_queue, round_no, EPOCH_NUM,))
     server_process.start()
     processes["server"] = server_process
 
     # for worker_id in workers_to_be_used:
     #     worker_p = Process(
-    #         target=fl.train_worker_mp, \
-    #         args=(worker_id, models[worker_id], train_data_loaders[worker_id], m_queue, round_no, EPOCH_NUM,))
+    #         target=testtest.train_worker_mp, \
+    #         args=(worker_id, models_data[worker_id], train_dss[worker_id], m_queue, round_no, EPOCH_NUM,))
     #     worker_p.start()
     #     processes[worker_id] = worker_p
     # counter = (NUM_TRAIN_WORKERS + 1)
@@ -105,17 +113,17 @@ for round_no in range(0, ROUNDS):
     while counter > 0:
         try:
             entry = m_queue.get(timeout=5)
-            logging.info("Queue recieved: Model id: {}, data: {}".format(entry[0], len(entry[1])))
+            print("Queue recieved: Model id: {}, data: {}".format(entry[0], len(entry[1])))
             models_data[entry[0]] = entry[1]
             counter -= 1
         except queue.Empty:
-            logging.debug("Empty queue! Waiting to reciev something...")
+            print("Empty queue! Waiting to reciev something...")
 
     for w_id in processes:
-        logging.debug("Joining and terminating process(es)...")
+        print("Joining and terminating process(es)...")
         processes[w_id].terminate()
         processes[w_id].join()
-        logging.debug("Status {}: is_alive [{}]".format(w_id, processes[w_id].is_alive()))
+        print("Status {}: is_alive [{}]".format(w_id, processes[w_id].is_alive()))
     
     # W = None
     # if arguments['--avg']:
@@ -125,11 +133,11 @@ for round_no in range(0, ROUNDS):
     # else:
     #     logging.error("Not expected this mode!")
     #     sys.exit(1)
-    logging.debug("Updating models...")
-    models["server"] = fl.update_a_model("server", models["server"], models_data["server"])
+    # print("Updating models...")
+    # models["server"] = testtest.update_a_model("server", models["server"], models_data["server"])
     # Apply the server model to the test dataset
     # models = fl.update_models(ALPHA, W, models_data)
-    # fl.test(models["server"], test_data_loader, "server")
+    testtest.test(models_data["server"], test_dl, "server")
     # fl.test(fl.server_model, test_data_loader, epoch_no, "averaged")
 
     # # for worker_id in workers_to_be_used_:
@@ -191,7 +199,7 @@ for round_no in range(0, ROUNDS):
 
 # # fl.load_femnist_train(FEMNIST_PATH)
 # # fl.load_femnist_test(FEMNIST_PATH)
-# # logging.debug("Some sample data for user {}: {}".format(fl.workers_id[0], fl.train_data[fl.workers_id[0]]['y'][0:15]))
+# # print("Some sample data for user {}: {}".format(fl.workers_id[0], fl.train_data[fl.workers_id[0]]['y'][0:15]))
 
 
 # random.seed("12345")
