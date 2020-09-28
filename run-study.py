@@ -23,10 +23,10 @@ MNIST_PATH = "/home/ubuntu/data/MNIST/processed_manual"
 EMNIST_PATH = "/home/ubuntu/EMNIST/"
 FEMNIST_PATH="/home/ubuntu/leaf/data/femnist/data"
 FEMNIST_PATH_GOOGLE="/home/ubuntu/data/fed_google"
-NUM_TRAIN_WORKERS = 5
+NUM_TRAIN_WORKERS = 30
 ALPHA = 0.7
-EPOCH_NUM = 5
-ROUNDS = 1
+EPOCH_NUM = 1
+ROUNDS = 2
 LAYER = 8
 models = dict()
 
@@ -85,20 +85,22 @@ train_data_loaders, test_data_loader = fl.create_datasets_mp(workers_to_be_used,
 
 
 m_queue = mq()
+processes = dict()
 for round_no in range(0, ROUNDS):
-    processes = dict()
+    logging.debug("Round {} started.".format(round_no))
     server_process = Process(target=fl.train_server_mp, \
         args=(models['server'], server_data_loader, m_queue, round_no, EPOCH_NUM,))
     server_process.start()
     processes["server"] = server_process
 
-    for worker_id in workers_to_be_used:
-        worker_p = Process(
-            target=fl.train_worker_mp, \
-            args=(worker_id, models[worker_id], train_data_loaders[worker_id], m_queue, round_no, EPOCH_NUM,))
-        worker_p.start()
-        processes[worker_id] = worker_p
-    counter = (NUM_TRAIN_WORKERS + 1)
+    # for worker_id in workers_to_be_used:
+    #     worker_p = Process(
+    #         target=fl.train_worker_mp, \
+    #         args=(worker_id, models[worker_id], train_data_loaders[worker_id], m_queue, round_no, EPOCH_NUM,))
+    #     worker_p.start()
+    #     processes[worker_id] = worker_p
+    # counter = (NUM_TRAIN_WORKERS + 1)
+    counter = 1
     models_data = dict()
     while counter > 0:
         try:
@@ -107,26 +109,28 @@ for round_no in range(0, ROUNDS):
             models_data[entry[0]] = entry[1]
             counter -= 1
         except queue.Empty:
-            logging.debug("Empty queue! Not should have been here!")
+            logging.debug("Empty queue! Waiting to reciev something...")
 
     for w_id in processes:
-        processes[w_id].join()
+        logging.debug("Joining and terminating process(es)...")
         processes[w_id].terminate()
+        processes[w_id].join()
+        logging.debug("Status {}: is_alive [{}]".format(w_id, processes[w_id].is_alive()))
     
-    W = None
-    if arguments['--avg']:
-        W = [0.1] * len(workers_to_be_used)
-    elif arguments['--opt']:
-        W = fl.find_best_weights(models_data)
-    else:
-        logging.error("Not expected this mode!")
-        sys.exit(1)
-
-    logging.info("Updating models.")
+    # W = None
+    # if arguments['--avg']:
+    #     W = [0.1] * len(workers_to_be_used)
+    # elif arguments['--opt']:
+    #     W = fl.find_best_weights(models_data)
+    # else:
+    #     logging.error("Not expected this mode!")
+    #     sys.exit(1)
+    logging.debug("Updating models...")
+    models["server"] = fl.update_a_model("server", models["server"], models_data["server"])
     # Apply the server model to the test dataset
-    models = fl.update_models(ALPHA, W, models_data)
+    # models = fl.update_models(ALPHA, W, models_data)
     # fl.test(models["server"], test_data_loader, "server")
-    #     fl.test(fl.server_model, test_data_loader, epoch_no, "averaged")
+    # fl.test(fl.server_model, test_data_loader, epoch_no, "averaged")
 
     # # for worker_id in workers_to_be_used_:
     # #     fl.getback_model(fl.workers_model[worker_id])

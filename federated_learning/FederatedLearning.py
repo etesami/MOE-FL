@@ -288,6 +288,8 @@ class FederatedLearning():
 
 
     def send_model(self, model, location, location_id):
+        logging.debug("Model location: {}".format(model.location))
+        logging.debug("Model location to be sent to: {}".format(location))
         if isinstance(model, dict):
             for ww_id, ww in model.items():
                 if ww.location is None:
@@ -516,14 +518,21 @@ class FederatedLearning():
         #     file.close()
         return 0
 
-    def train_server_mp(self, server_model, train_server_loader, m_queue, round_no, epoch_num):
+    def train_server_mp(self, model_data, train_server_loader, m_queue, round_no, epoch_num):
         # file = None
         # if self.write_to_file:
         #     file = open(self.output_prefix + "_train_server", "a")
-        self.send_model(server_model, self.server, "server")
+        server_model = FLNet().to(torch.device("cpu"))
+        server = sy.VirtualWorker(sy.TorchHook(torch), id="server")
+        self.update_a_model("server", server_model, model_data)
+        logging.debug("start training server...")
+        self.send_model(server_model, server, "server")
+        logging.debug("Send model...")
         server_opt = optim.SGD(server_model.parameters(), lr=self.args.lr)
         for epoch in range(epoch_num):
+            # logging.debug("epoch {}".format(epoch))
             for batch_idx, (data, target) in enumerate(train_server_loader):
+                # logging.debug("batch_idx {}".format(batch_idx))
                 server_model.train()
                 data, target = data.to(self.device), target.to(self.device, dtype = torch.int64)
                 server_opt.zero_grad()
@@ -547,7 +556,9 @@ class FederatedLearning():
         #     file.close()
         # Always need to get back the model
         self.getback_model(server_model)
+        logging.debug("Putting into the queue.")
         m_queue.put(("server", self.compress_model_layers(server_model)))
+        logging.debug("Put into the queue!")
         return 0
 
 
@@ -575,7 +586,7 @@ class FederatedLearning():
 
     def compress_model_layers(self, model):
         LAYERS = 8
-        logging.info("Prepare trained model to be returned and updated adter all epochs")
+        logging.info("Prepare trained model to be returned and updated after all epochs")
         tmp_params = [[] for i in range(LAYERS)]
         tmp_params[0] = model.conv1.weight.data.numpy()
         tmp_params[1] = model.conv1.bias.data.numpy()
@@ -631,7 +642,6 @@ class FederatedLearning():
         model.eval()
         test_loss = 0
         correct = 0
-        # print(dir(test_loader))
         with torch.no_grad():
             for data, target in test_loader:
                 data, target = data.to(self.device), target.to(self.device, dtype=torch.int64)
@@ -825,6 +835,19 @@ class FederatedLearning():
                     models[worker_id].fc2.bias.data = models["server"].fc2.bias.data
 
         return models
+
+
+    def update_a_model(self, worker_id, model, model_data):
+        model.conv1.weight.data = torch.Tensor(model_data[0])
+        model.conv1.bias.data = torch.Tensor(model_data[1])
+        model.conv2.weight.data = torch.Tensor(model_data[2])
+        model.conv2.bias.data = torch.Tensor(model_data[3])
+        model.fc1.weight.data = torch.Tensor(model_data[4])
+        model.fc1.bias.data = torch.Tensor(model_data[5])
+        model.fc2.weight.data = torch.Tensor(model_data[6])
+        model.fc2.bias.data = torch.Tensor(model_data[7])
+        return model
+
 
     def create_server_model(self):
         logging.info("Creating a model for the server")
