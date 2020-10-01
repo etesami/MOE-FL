@@ -1,0 +1,23 @@
+runtime:
+    epochs_num: 2
+    rounds_num: 2
+    batch_size: 20
+    test_batch_size: 50
+    lr: 0.01
+    momentum: 0.5
+    train_workers_num: 3383  # Total number of users which participate in training in each round (Total: 3383)
+    random_seed: 12345
+    save_model: False
+    model_path: "data/server_model"
+data:
+    MNIST_PATH: "/home/ubuntu/data/MNIST/processed_manual"
+    EMNIST_PATH: "/home/ubuntu/EMNIST/"
+    FEMNIST_PATH: "/home/ubuntu/leaf/data/femnist/data"
+    EMNIST_GOOGLE_PATH: "/home/ubuntu/data/fed_google"
+log:
+    level: INFO
+    interval: 40
+    output_dir: "data_tmp"
+    output_prefix: "test_"
+    neptune_init: "ehsan/sandbox"
+    neptune_exp: "evaluation_01"
