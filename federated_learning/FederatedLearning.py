@@ -22,7 +22,7 @@ import neptune
 class FederatedLearning():
 
     # Initializing variables
-    def __init__(self, batch_size, test_batch_size, lr, momentum, neptune_enable, log_enable, log_interval, log_level, output_prefix, random_seed, save_model):
+    def __init__(self, batch_size, test_batch_size, lr, momentum, neptune_enable, log_enable, log_interval, log_level, output_dir, output_prefix, random_seed, save_model):
         
         logging.basicConfig(format='%(asctime)s %(message)s', level=log_level)
         logging.info("Initializing Federated Learning class...")
@@ -51,9 +51,9 @@ class FederatedLearning():
         self.neptune_enable = neptune_enable
         self.save_model = save_model
         
-        if output_prefix is None:
-            raise Exception("Sorry, you should specify the output path!")
         self.output_prefix = output_prefix
+        self.output_dir = output_dir
+        self.log_file_path = self.output_dir + "/" + self.output_prefix
 
 
     def create_workers(self, workers_id_list):
@@ -180,25 +180,10 @@ class FederatedLearning():
         self.workers_id, self.train_data = workers_id, data
 
 
-    def count_digits(self):
-        count = {}
-        for i in range(0,10):
-            count[i] = 0
-        for d in self.train_labels:
-            count[d] = count[d] + 1
-
-        logging.info("Percentage of digits in whole training dataset: {}".format(
-            [round(d*100.0/len(self.train_labels),2) for _, d in count.items()]))
-        with open(self.output_prefix + "_digits", "w") as f:
-            f.write(' '.join([str(round(d*100.0/len(self.train_labels),2)) for _, d in count.items()]))
-            f.close()
-
-
     def create_datasets(self, selected_workers_id):
         logging.info("Creating federated dataset for selected {} workers...".format(len(selected_workers_id)))
         
         train_datasets = []
-        # test_datasets = []
         test_data_images = torch.Tensor()
         test_data_labels = torch.Tensor()
 
@@ -468,52 +453,7 @@ class FederatedLearning():
                 self.train_labels[labels_indexes[labels_to_be_changed[l + 1]][indexes_sec_digit]]= labels_to_be_changed[l]
 
 
-    def train_workers(self, federated_train_loader, workers_id_list, round_no, epoch_no):
-        workers_opt = {}
-        file = None
-        # if self.log_enable:
-        #     file = open(self.output_prefix + "_train", "a")
-        for ww_id in workers_id_list:
-        # for ww_id, ww in self.workers.items():
-            if self.workers_model[ww_id].location is None \
-                    or self.workers_model[ww_id].location.id != ww_id:
-                self.workers_model[ww_id].send(self.workers[ww_id])
-            workers_opt[ww_id] = optim.SGD(params=self.workers_model[ww_id].parameters(), lr=self.lr)
-
-        for batch_idx, (data, target) in enumerate(federated_train_loader):
-            worker_id = data.location.id
-            worker_model = self.workers_model[worker_id]
-            worker_opt = workers_opt[worker_id]
-            worker_model.train()
-            data, target = data.to(self.device), target.to(self.device, dtype = torch.int64)
-            worker_opt.zero_grad()
-            output = worker_model(data)
-            loss = F.nll_loss(output, target)
-            loss.backward()
-            worker_opt.step()
-
-            if batch_idx % self.log_interval == 0:
-                loss = loss.get()
-                if self.neptune_enable:
-                    neptune.log_metric(worker_id, loss)
-                    # TO_FILE = '{} {} {} {} {}\n'.format(round_no, epoch_no, batch_idx, data.location.id, loss)
-                    # file.write(TO_FILE)
-                logging.info('Train Round: {}, Epoch: {} [{}] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                    round_no, epoch_no, worker_id, batch_idx, 
-                    batch_idx * self.batch_size, 
-                    len(federated_train_loader) * self.batch_size,
-                    100. * batch_idx / len(federated_train_loader), loss.item()))
-        # Need to getback the self.workers_model
-        # if self.log_enable:
-        #     file.close()
-        print()
-
-
     def train_server(self, train_server_loader, round_no, epochs_num):
-        # file = None
-        # if self.log_enable:
-        #     file = open(self.output_prefix + "_train_server", "a")
-
         self.send_model(self.server_model, self.server, "server")
         server_opt = optim.SGD(self.server_model.parameters(), lr=self.lr)
         for epoch_no in range(epochs_num):
@@ -530,8 +470,11 @@ class FederatedLearning():
                     loss = loss.get()
                     if self.neptune_enable:
                         neptune.log_metric('loss_server', loss)
-                        # TO_FILE = '{} {} {} {} {}\n'.format(round_no, epoch_no, batch_idx, data.location.id, loss)
-                        # file.write(TO_FILE)
+                    if self.log_enable:
+                        file = open(self.log_file_path + "_trainserver", "a")
+                        TO_FILE = '{} {} {} [server] {}\n'.format(round_no, epoch_no, batch_idx, loss)
+                        file.write(TO_FILE)
+                        file.close()
                     logging.info('Train Round: {}, Epoch: {} [server] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                         round_no, epoch_no, batch_idx, 
                         batch_idx * self.batch_size, 
@@ -542,6 +485,76 @@ class FederatedLearning():
         # Always need to get back the model
         self.getback_model(self.server_model)
         print()
+    
+    def train_workers(self, federated_train_loader, workers_id_list, round_no, epochs_num):
+        workers_opt = {}
+        for epoch_no in range(epochs_num):
+            for ww_id in workers_id_list:
+                if self.workers_model[ww_id].location is None \
+                        or self.workers_model[ww_id].location.id != ww_id:
+                    self.workers_model[ww_id].send(self.workers[ww_id])
+                workers_opt[ww_id] = optim.SGD(params=self.workers_model[ww_id].parameters(), lr=self.lr)
+                # workers_opt[ww_id] = optim.Adam(params=self.workers_model[ww_id].parameters(), lr=self.lr)
+
+            for batch_idx, (data, target) in enumerate(federated_train_loader):
+                worker_id = data.location.id
+                worker_model = self.workers_model[worker_id]
+                worker_opt = workers_opt[worker_id]
+                worker_model.train()
+                data, target = data.to(self.device), target.to(self.device, dtype = torch.int64)
+                worker_opt.zero_grad()
+                output = worker_model(data)
+                loss = F.nll_loss(output, target)
+                loss.backward()
+                worker_opt.step()
+
+                if batch_idx % self.log_interval == 0:
+                    loss = loss.get()
+                    if self.neptune_enable:
+                        neptune.log_metric("loss_" + str(worker_id), loss)
+                    if self.log_enable:
+                        file = open(self.log_file_path + "_" + str(worker_id) + "_train", "a")
+                        TO_FILE = '{} {} {} {} {}\n'.format(round_no, epoch_no, batch_idx, worker_id, loss)
+                        file.write(TO_FILE)
+                        file.close()
+                    logging.info('Train Round: {}, Epoch: {} [{}] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                        round_no, epoch_no, worker_id, batch_idx, 
+                        batch_idx * self.batch_size, 
+                        len(federated_train_loader) * self.batch_size,
+                        100. * batch_idx / len(federated_train_loader), loss.item()))
+        print()
+
+
+    def test(self, model, test_loader, test_name, round_no):
+        self.getback_model(model)
+        model.eval()
+        test_loss = 0
+        correct = 0
+        with torch.no_grad():
+            for data, target in test_loader:
+                data, target = data.to(self.device), target.to(self.device, dtype=torch.int64)
+                output = model(data)
+                test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+                pred = output.argmax(1, keepdim=True)  # get the index of the max log-probability
+                correct += pred.eq(target.view_as(pred)).sum().item()
+
+        test_loss /= len(test_loader.dataset)
+        test_acc = 100. * correct / len(test_loader.dataset)
+        if self.neptune_enable:
+            neptune.log_metric(test_name + "_test_loss", test_loss)
+            neptune.log_metric(test_name + "_test_acc", test_acc)
+        if self.log_enable:
+            file = open(self.log_file_path + "_" + str(test_name) + "_test", "a")
+            TO_FILE = '{} {} "{{/*Accuracy:}}\\n{}%" {}\n'.format(
+                round_no, test_loss, 
+                test_acc,
+                test_acc)
+            file.write(TO_FILE)
+            file.close()
+        logging.info('Test set [{}]: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+            test_name, test_loss, correct, len(test_loader.dataset),
+            test_acc))
+        return test_acc
 
 
     def test_workers(self, model, test_loader, epoch, test_name):
@@ -568,35 +581,6 @@ class FederatedLearning():
         if self.neptune_enable:
             neptune.log_metric("test_loss_" + test_name, test_loss)
             neptune.log_metric("test_acc_" + test_name, 100. * correct / len(test_loader.dataset))
-            # file = open(self.output_prefix + "_test", "a")
-            # TO_FILE = '{} {} "{{/*0.80 Accuracy:}}\\n{}%" {}\n'.format(
-            #     epoch, test_loss, 
-            #     100. * correct / len(test_loader.dataset),
-            #     100. * correct / len(test_loader.dataset))
-            # file.write(TO_FILE)
-            # file.close()
-        logging.info('Test set [{}]: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-            test_name, test_loss, correct, len(test_loader.dataset),
-            100. * correct / len(test_loader.dataset)))
-
-    def test(self, model, test_loader, test_name):
-        # if fl.log_enable:
-            # file = open(self.output_prefix + "_test", "a")
-        model.eval()
-        test_loss = 0
-        correct = 0
-        with torch.no_grad():
-            for data, target in test_loader:
-                data, target = data.to(self.device), target.to(self.device, dtype=torch.int64)
-                output = model(data)
-                test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-                pred = output.argmax(1, keepdim=True)  # get the index of the max log-probability
-                correct += pred.eq(target.view_as(pred)).sum().item()
-
-        test_loss /= len(test_loader.dataset)
-        if self.neptune_enable:
-            neptune.log_metric(test_name + "_test_loss", test_loss)
-            neptune.log_metric(test_name + "_test_acc", 100. * correct / len(test_loader.dataset))
             # file = open(self.output_prefix + "_test", "a")
             # TO_FILE = '{} {} "{{/*0.80 Accuracy:}}\\n{}%" {}\n'.format(
             #     epoch, test_loss, 

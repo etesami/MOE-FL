@@ -1,5 +1,6 @@
 **/.vscode
 **/data_tmp
+**/data
 **/*.pvc
 **/__pycache__
 **/.DS_Store
