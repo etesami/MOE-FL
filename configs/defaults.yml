@@ -17,7 +17,7 @@ data:
 log:
     level: INFO
     interval: 2
-    output_dir: "data_tmp"
+    output_dir: "data_tmp_distances"
     # output_prefix: "test_"
     neptune_init: "ehsan/sandbox"
     neptune_exp: "evaluation_01"
