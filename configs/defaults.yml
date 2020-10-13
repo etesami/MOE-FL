@@ -15,7 +15,7 @@ data:
     FEMNIST_PATH: "/home/ubuntu/leaf/data/femnist/data"
     EMNIST_GOOGLE_PATH: "/home/ubuntu/data/fed_google"
 log:
-    level: INFO
+    level: DEBUG
     interval: 2
     output_dir: "data_tmp_distances"
     # output_prefix: "test_"
