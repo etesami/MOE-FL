@@ -90,48 +90,58 @@ if __name__ == '__main__':
     
     model_path_ = "{}{}".format(model_path, "server_model_7")
     trained_server_model = torch.load(model_path_)
+
+    for parameter in trained_server_model.parameters():
+        print(parameter)
+        # print("-" * 10)
     # print("{} {}".format("server", get_distance(trained_server_model, trained_server_model)))
 
 
-    fl = FederatedLearning(batch_size, test_batch_size, lr, momentum, neptune_enable, log_enable, log_interval, log_level, output_dir, output_prefix, random_seed, save_model)
+    # fl = FederatedLearning(batch_size, test_batch_size, lr, momentum, neptune_enable, log_enable, log_interval, log_level, output_dir, output_prefix, random_seed, save_model)
     
-    fl.load_femnist_train_digits(emnist_google_path)
-    fl.load_femnist_test_digits(emnist_google_path)
-    logging.info("Total workers size: {}".format(len(fl.workers_id)))
+    # fl.load_femnist_train_digits(emnist_google_path)
+    # fl.load_femnist_test_digits(emnist_google_path)
+    # logging.info("Total workers size: {}".format(len(fl.workers_id)))
 
-    random.seed(random_seed)
+    # random.seed(random_seed)
 
-    fl.create_server()
-    fl.create_server_model()
+    # fl.create_server()
+    # fl.create_server_model()
 
     # test_data_loader = fl.create_test_dataset()
     
-    if log_enable:
-        file = open(log_file_path + "_models_distance", "a")
-    if neptune_enable:
-        neptune.init(neptune_init)
-        neptune.create_experiment(name = neptune_name)
+    # if log_enable:
+    #     file = open(log_file_path + "_models_distance", "a")
+    # if neptune_enable:
+    #     neptune.init(neptune_init)
+    #     neptune.create_experiment(name = neptune_name)
 
-    bad_workers_idx = None
-    if arguments['--attack']:
-        bad_workers_idx = fl.attack_permute_labels_randomly(1, 100)
-        print(bad_workers_idx)
-    else:
-        model_path_ = "{}{}".format(model_path, "models_list")
-        trained_models_list = get_models_list(model_path_)
-        for model_ in trained_models_list:
-            model_path_ = "{}{}".format(model_path, model_)
-            trained_model = torch.load(model_path_)
-            distance = round(get_distance(trained_model, trained_server_model),2)
-            TO_FILE = '{} {}\n'.format(model_, distance)
-            print("{} {}".format(model_, distance))
-            if log_enable:
-                file.write(TO_FILE)
-            if neptune_enable:
-                neptune.log_metric('distances', distance)
-    
-    if log_enable:
-        file.close()
+    # bad_workers_idx = None
+    # if arguments['--attack']:
+    #     bad_workers_idx = fl.attack_permute_labels_randomly(1, 100)
+    #     print(bad_workers_idx)
+    # else:
+
+
+    # model_path_ = "{}{}".format(model_path, "models_list")
+    # trained_models_list = get_models_list(model_path_)
+    # for model_ in trained_models_list:
+    #     model_path_ = "{}{}".format(model_path, model_)
+    #     trained_model = torch.load(model_path_)
+    #     for param in trained_model.parameters():
+    #         print(param)
+
+
+        # distance = round(get_distance(trained_model, trained_server_model),2)
+        # TO_FILE = '{} {}\n'.format(model_, distance)
+        # print("{} {}".format(model_, distance))
+        # if log_enable:
+        #     file.write(TO_FILE)
+        # if neptune_enable:
+        #     neptune.log_metric('distances', distance)
+
+    # if log_enable:
+    #     file.close()
 
     
 
