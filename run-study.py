@@ -2,6 +2,7 @@
 Usage: 
     run-study.py \n\t\t--server \n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t--local-log=<true/false> \n\t\t --neptune-log=<true/false>\n\t\t--output-file=<output-filename>
     run-study.py \n\t\t--clients \n\t\t--start=<start> \n\t\t--end=<end>\n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t--local-log=<true/false> \n\t\t --neptune-log=<true/false>\n\t\t--output-prefix=<output-prefix>
+    run-study.py \n\t\t--clients --attack \n\t\t--percentage=<percentage>\n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t--local-log=<true/false> \n\t\t --neptune-log=<true/false>\n\t\t--output-prefix=<output-prefix>
 """
 from docopt import docopt
 from federated_learning.FederatedLearning import FederatedLearning
@@ -105,33 +106,60 @@ if __name__ == '__main__':
                 break
 
     elif arguments['--clients']:
-        start_idx = int(arguments['--start']) 
-        end_idx = int(arguments['--end']) 
-        worker_idx = start_idx
-        
-        while worker_idx <= end_idx:
-            # contains sth like this ['f_353']
-            workers_to_be_used = [fl.workers_id[worker_idx]]
+        if arguments['--attack']:
+            bad_workers_idx = None
+            percentage = float(arguments['--percentage'])
+            bad_workers_idx = fl.attack_permute_labels_randomly(percentage, 100)
+            for worker_id in bad_workers_idx:
+                # contains sth like this ['f_353']
+                workers_to_be_used = [worker_id]
+                fl.create_workers(workers_to_be_used)
+
+                logging.debug("Some sample train labels for user {}: {}".format(workers_to_be_used[0], fl.train_data[workers_to_be_used[0]]['y'][0:10]))
+                fl.create_workers_model(workers_to_be_used)
+                train_data_loader, test_data_loader = fl.create_datasets(workers_to_be_used)
+
+                test_acc = 0
+                for round_no in range(0, rounds_num):
+                    fl.train_workers(train_data_loader, workers_to_be_used, round_no, epochs_num)
+                    test_acc = fl.test(fl.workers_model[worker_id], test_data_loader, worker_id, round_no)
+                    model_path_ = model_path + str(worker_id) + "_" + str(round_no) + "_" + str(round(test_acc,2))
+                    logging.info("Saving the worker model: {} ...".format(model_path_))
+                    if test_acc >= 98.5:
+                        logging.info("Test accuracy is {}. Stopping the experiment...\n".format(test_acc))
+                        break
+                if neptune_enable:
+                    neptune.log_metric("accuracy_overal", test_acc)
+                torch.save(fl.workers_model[worker_id], model_path_)
+
+        else:
+            start_idx = int(arguments['--start']) 
+            end_idx = int(arguments['--end']) 
+            worker_idx = start_idx
             
-            fl.create_workers(workers_to_be_used)
+            while worker_idx <= end_idx:
+                # contains sth like this ['f_353']
+                workers_to_be_used = [fl.workers_id[worker_idx]]
+                
+                fl.create_workers(workers_to_be_used)
 
-            logging.debug("Some sample train labels for user {}: {}".format(workers_to_be_used[0], fl.train_data[workers_to_be_used[0]]['y'][0:10]))
-            fl.create_workers_model(workers_to_be_used)
-            train_data_loader, test_data_loader = fl.create_datasets(workers_to_be_used)
+                logging.debug("Some sample train labels for user {}: {}".format(workers_to_be_used[0], fl.train_data[workers_to_be_used[0]]['y'][0:10]))
+                fl.create_workers_model(workers_to_be_used)
+                train_data_loader, test_data_loader = fl.create_datasets(workers_to_be_used)
 
-            test_acc = 0
-            for round_no in range(0, rounds_num):
-                fl.train_workers(train_data_loader, workers_to_be_used, round_no, epochs_num)
-                test_acc = fl.test(fl.workers_model[fl.workers_id[worker_idx]], test_data_loader, fl.workers_id[worker_idx], round_no)
-                model_path_ = model_path + str(fl.workers_id[worker_idx]) + "_" + str(round_no) + "_" + str(round(test_acc,2))
-                logging.info("Saving the worker model: {} ...".format(model_path_))
-                if test_acc >= 98.5:
-                    logging.info("Test accuracy is {}. Stopping the experiment...\n".format(test_acc))
-                    break
-            if neptune_enable:
-                neptune.log_metric("accuracy_overal", test_acc)
-            torch.save(fl.workers_model[fl.workers_id[worker_idx]], model_path_)
-            worker_idx += 1
+                test_acc = 0
+                for round_no in range(0, rounds_num):
+                    fl.train_workers(train_data_loader, workers_to_be_used, round_no, epochs_num)
+                    test_acc = fl.test(fl.workers_model[fl.workers_id[worker_idx]], test_data_loader, fl.workers_id[worker_idx], round_no)
+                    model_path_ = model_path + str(fl.workers_id[worker_idx]) + "_" + str(round_no) + "_" + str(round(test_acc,2))
+                    logging.info("Saving the worker model: {} ...".format(model_path_))
+                    if test_acc >= 98.5:
+                        logging.info("Test accuracy is {}. Stopping the experiment...\n".format(test_acc))
+                        break
+                if neptune_enable:
+                    neptune.log_metric("accuracy_overal", test_acc)
+                torch.save(fl.workers_model[fl.workers_id[worker_idx]], model_path_)
+                worker_idx += 1
             
     else:
         raise Exception("Wrong arguments!")

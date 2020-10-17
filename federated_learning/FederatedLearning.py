@@ -319,8 +319,9 @@ class FederatedLearning():
         NUM_MAL_WORKERS = round(workers_percentage * len(self.workers_id) / 100.0)
         selected_workers_idx = random.sample(range(len(self.workers_id)), NUM_MAL_WORKERS)
         selected_workers_id = [self.workers_id[i] for i in selected_workers_idx]
+        logging.debug("Total selected Bad workers: {}".format(len(selected_workers_id)))
 
-        logging.debug("Some Affected workers: {}...".format(selected_workers_id[0:1]))  
+        logging.debug("Some Affected workers: {}...".format(selected_workers_id[0:5]))  
 
         for worker_id in selected_workers_id:
         
@@ -336,7 +337,7 @@ class FederatedLearning():
         
             # Initialization of indexes
             index = 0
-            logging.debug("Worker Labels (Before): {}".format(self.train_data[worker_id]['y']))
+            logging.debug("Worker Labels (Before): {}".format(self.train_data[worker_id]['y'][0:10]))
             for n in self.train_data[worker_id]['y']:
                 labels_indexes[n] = np.concatenate((labels_indexes[n], [index]))
                 index = index + 1
@@ -366,7 +367,8 @@ class FederatedLearning():
                 self.train_data[worker_id]['y'][indexes_first_digit] = labels_to_be_changed[l + 1]
                 self.train_data[worker_id]['y'][indexes_sec_digit] = labels_to_be_changed[l]
             
-            logging.debug("Worker Labels (After): {}\n".format(self.train_data[worker_id]['y']))
+            logging.debug("Worker Labels (After): {}\n".format(self.train_data[worker_id]['y'][0:10]))
+        return selected_workers_id
 
 
     def attack_permute_labels_collaborative(self, workers_percentage, data_percentage):
