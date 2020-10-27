@@ -22,7 +22,7 @@ import neptune
 class FederatedLearning():
 
     # Initializing variables
-    def __init__(self, batch_size, test_batch_size, lr, momentum, neptune_enable, log_enable, log_interval, log_level, output_dir, output_prefix, random_seed, save_model):
+    def __init__(self, batch_size, test_batch_size, lr, wieght_decay, momentum, neptune_enable, log_enable, log_interval, log_level, output_dir, output_prefix, random_seed, save_model):
         
         logging.basicConfig(format='%(asctime)s %(message)s', level=log_level)
         logging.info("Initializing Federated Learning class...")
@@ -50,6 +50,7 @@ class FederatedLearning():
         self.log_enable = log_enable
         self.neptune_enable = neptune_enable
         self.save_model = save_model
+        self.weight_decay = wieght_decay
         
         self.output_prefix = output_prefix
         self.output_dir = output_dir
@@ -495,7 +496,7 @@ class FederatedLearning():
                 if self.workers_model[ww_id].location is None \
                         or self.workers_model[ww_id].location.id != ww_id:
                     self.workers_model[ww_id].send(self.workers[ww_id])
-                workers_opt[ww_id] = optim.SGD(params=self.workers_model[ww_id].parameters(), lr=self.lr)
+                workers_opt[ww_id] = optim.SGD(params=self.workers_model[ww_id].parameters(), lr=self.lr, weight_decay=self.weight_decay)
                 # workers_opt[ww_id] = optim.Adam(params=self.workers_model[ww_id].parameters(), lr=self.lr)
 
             for batch_idx, (data, target) in enumerate(federated_train_loader):

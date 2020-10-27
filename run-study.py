@@ -1,8 +1,8 @@
 """
 Usage: 
     run-study.py \n\t\t--server \n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t--local-log=<true/false> \n\t\t --neptune-log=<true/false>\n\t\t--output-file=<output-filename>
-    run-study.py \n\t\t--clients \n\t\t--start=<start> \n\t\t--end=<end>\n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t--local-log=<true/false> \n\t\t --neptune-log=<true/false>\n\t\t--output-prefix=<output-prefix>
-    run-study.py \n\t\t--clients --attack \n\t\t--percentage=<percentage>\n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t--local-log=<true/false> \n\t\t --neptune-log=<true/false>\n\t\t--output-prefix=<output-prefix>
+    run-study.py \n\t\t--clients \n\t\t--start=<start>\n\t\t[--reg=<lambda>]\n\t\t--end=<end>\n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t--local-log=<true/false> \n\t\t --neptune-log=<true/false>\n\t\t--output-prefix=<output-prefix>
+    run-study.py \n\t\t--clients --attack \n\t\t--percentage=<percentage>\n\t\t[--reg=<lambda>]\n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t--local-log=<true/false> \n\t\t --neptune-log=<true/false>\n\t\t--output-prefix=<output-prefix>
 """
 from docopt import docopt
 from federated_learning.FederatedLearning import FederatedLearning
@@ -48,10 +48,9 @@ if __name__ == '__main__':
     test_batch_size = configs['runtime']['test_batch_size']
     lr = configs['runtime']['lr']
     momentum = configs['runtime']['momentum']
-    save_model = configs['runtime']['save_model']
-    model_path = configs['runtime']['model_path']
     random_seed = configs['runtime']['random_seed']
     train_workers_num = configs['runtime']['train_workers_num']
+    reg = float(arguments['--reg']) if arguments['--reg'] is not None else 0.0
     
     output_file = arguments['--output-file']
     log_enable = True if arguments['--local-log'] == "True" or \
@@ -67,8 +66,11 @@ if __name__ == '__main__':
     neptune_name = configs['log']['neptune_exp']
     emnist_google_path = configs['data']['EMNIST_GOOGLE_PATH']
     
+    save_model = configs['runtime']['save_model']
+    model_path = configs['runtime']['model_path']
+    model_path = model_path + output_prefix
 
-    fl = FederatedLearning(batch_size, test_batch_size, lr, momentum, neptune_enable, log_enable, log_interval, log_level, output_dir, output_prefix, random_seed, save_model)
+    fl = FederatedLearning(batch_size, test_batch_size, lr, reg, momentum, neptune_enable, log_enable, log_interval, log_level, output_dir, output_prefix, random_seed, save_model)
 
     if neptune_enable:
         neptune.init(neptune_init)
@@ -100,7 +102,9 @@ if __name__ == '__main__':
             fl.train_server(server_data_loader, round_no, epochs_num)
             test_acc = fl.test(fl.server_model, test_data_loader, "server", round_no)
             logging.info("Saving the server model...")
-            torch.save(fl.server_model, model_path + "_" + str(round_no))
+            if save_model:
+                logging.info("Saving the model to: {}".format(model_path_))
+                torch.save(fl.server_model, model_path + "_" + str(round_no))
             if test_acc >= 98.0:
                 logging.info("Test accuracy is {}. Stopping the experiment...".format(test_acc))
                 break
@@ -130,7 +134,9 @@ if __name__ == '__main__':
                         break
                 if neptune_enable:
                     neptune.log_metric("accuracy_overal", test_acc)
-                torch.save(fl.workers_model[worker_id], model_path_)
+                if save_model:
+                    logging.info("Saving the model to: {}".format(model_path_))
+                    torch.save(fl.workers_model[worker_id], model_path_)
 
         else:
             start_idx = int(arguments['--start']) 
@@ -151,14 +157,16 @@ if __name__ == '__main__':
                 for round_no in range(0, rounds_num):
                     fl.train_workers(train_data_loader, workers_to_be_used, round_no, epochs_num)
                     test_acc = fl.test(fl.workers_model[fl.workers_id[worker_idx]], test_data_loader, fl.workers_id[worker_idx], round_no)
-                    model_path_ = model_path + str(fl.workers_id[worker_idx]) + "_" + str(round_no) + "_" + str(round(test_acc,2))
+                    model_path_ = model_path + "_" + str(fl.workers_id[worker_idx]) + "_" + str(round_no) + "_" + str(round(test_acc,2))
                     logging.info("Saving the worker model: {} ...".format(model_path_))
                     if test_acc >= 98.5:
                         logging.info("Test accuracy is {}. Stopping the experiment...\n".format(test_acc))
                         break
                 if neptune_enable:
                     neptune.log_metric("accuracy_overal", test_acc)
-                torch.save(fl.workers_model[fl.workers_id[worker_idx]], model_path_)
+                if save_model:
+                    logging.info("Saving the model to: {}".format(model_path_))
+                    torch.save(fl.workers_model[fl.workers_id[worker_idx]], model_path_)
                 worker_idx += 1
             
     else:
