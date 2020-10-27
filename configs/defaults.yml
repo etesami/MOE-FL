@@ -3,11 +3,11 @@ runtime:
     # rounds_num: 2
     batch_size: 20
     test_batch_size: 4
-    lr: 0.01
+    lr: 0.1
     momentum: 0.5
     train_workers_num: 3383  # Total number of users which participate in training in each round (Total: 3383)
     random_seed: 12345
-    save_model: True
+    save_model: False
     model_path: "/home/ubuntu/FederatedLearning/data/"
 data:
     MNIST_PATH: "/home/ubuntu/data/MNIST/processed_manual"

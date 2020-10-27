@@ -2,7 +2,7 @@
 Usage: 
     run-study.py \n\t\t--server \n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t--local-log=<true/false> \n\t\t --neptune-log=<true/false>\n\t\t--output-file=<output-filename>
     run-study.py \n\t\t--clients \n\t\t--start=<start>\n\t\t[--reg=<lambda>]\n\t\t--end=<end>\n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t--local-log=<true/false> \n\t\t --neptune-log=<true/false>\n\t\t--output-prefix=<output-prefix>
-    run-study.py \n\t\t--clients --attack \n\t\t--percentage=<percentage>\n\t\t[--reg=<lambda>]\n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t--local-log=<true/false> \n\t\t --neptune-log=<true/false>\n\t\t--output-prefix=<output-prefix>
+    run-study.py \n\t\t--clients (--attack | --normal) \n\t\t--percentage=<percentage>\n\t\t[--reg=<lambda>]\n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t--local-log=<true/false> \n\t\t --neptune-log=<true/false>\n\t\t--output-prefix=<output-prefix>
 """
 from docopt import docopt
 from federated_learning.FederatedLearning import FederatedLearning
@@ -13,12 +13,25 @@ import ast
 import sys
 import yaml
 import os
+import numpy as np
 arguments = docopt(__doc__)
 import neptune
 
 # print(arguments)
 
 CONFIG_PATH = 'configs/defaults.yml'
+
+def get_distance(target_model, ref_model):
+    distance = 0
+    distance += np.linalg.norm(target_model.conv1.weight.data - ref_model.conv1.weight.data)
+    distance += np.linalg.norm(target_model.conv1.bias.data - ref_model.conv1.bias.data)
+    distance += np.linalg.norm(target_model.conv2.weight.data - ref_model.conv2.weight.data)
+    distance += np.linalg.norm(target_model.conv2.bias.data - ref_model.conv2.bias.data)
+    distance += np.linalg.norm(target_model.fc1.weight.data - ref_model.fc1.weight.data)
+    distance += np.linalg.norm(target_model.fc1.bias.data - ref_model.fc1.bias.data)
+    distance += np.linalg.norm(target_model.fc2.weight.data - ref_model.fc2.weight.data)
+    distance += np.linalg.norm(target_model.fc2.bias.data - ref_model.fc2.bias.data)
+    return round(distance, 2)
 
 def loadConfig(configPath):
     """ Load configuration files.
@@ -68,7 +81,10 @@ if __name__ == '__main__':
     
     save_model = configs['runtime']['save_model']
     model_path = configs['runtime']['model_path']
+    model_path_ = "{}{}".format(configs['runtime']['model_path'], "server_model_7")
+    trained_server_model = torch.load(model_path_)
     model_path = model_path + output_prefix
+    percentage = float(arguments['--percentage'])
 
     fl = FederatedLearning(batch_size, test_batch_size, lr, reg, momentum, neptune_enable, log_enable, log_interval, log_level, output_dir, output_prefix, random_seed, save_model)
 
@@ -81,16 +97,18 @@ if __name__ == '__main__':
     logging.info("Total workers size: {}".format(len(fl.workers_id)))
 
     random.seed(random_seed)
+    workers_to_be_used = fl.get_subset_of_workers(percentage)
 
     if arguments['--server']:
         fl.create_server()
-        # [1, 3, 6, 9]
-        workers_to_be_used_idx = random.sample(range(len(fl.workers_id)), train_workers_num)
-        # ['f_353', 'f_345']
-        workers_to_be_used = [fl.workers_id[i] for i in workers_to_be_used_idx]
+        # # [1, 3, 6, 9]
+        # workers_to_be_used_idx = random.sample(range(len(fl.workers_id)), train_workers_num)
+        # # ['f_353', 'f_345']
+        # workers_to_be_used = [fl.workers_id[i] for i in workers_to_be_used_idx]
         fl.create_workers(workers_to_be_used)
 
-        logging.debug("Some sample train labels for user {}: {}".format(workers_to_be_used[0], fl.train_data[workers_to_be_used[0]]['y'][0:10]))
+        logging.debug("Some sample train labels for user {}: {}".format(
+            workers_to_be_used[0], fl.train_data[workers_to_be_used[0]]['y'][0:10]))
 
         fl.create_server_model()
         fl.create_workers_model(workers_to_be_used)
@@ -111,34 +129,86 @@ if __name__ == '__main__':
 
     elif arguments['--clients']:
         if arguments['--attack']:
-            bad_workers_idx = None
-            percentage = float(arguments['--percentage'])
-            bad_workers_idx = fl.attack_permute_labels_randomly(percentage, 100)
-            for worker_id in bad_workers_idx:
+            
+            # Shuffel randomly
+            fl.attack_permute_labels_randomly(workers_to_be_used, 100)
+            
+            # Attack based on the Robust Aggregation paper
+            # fl.attack_convert_to_black(percentage)
+            
+            for worker_id in workers_to_be_used:
+
                 # contains sth like this ['f_353']
                 workers_to_be_used = [worker_id]
                 fl.create_workers(workers_to_be_used)
 
                 logging.debug("Some sample train labels for user {}: {}".format(workers_to_be_used[0], fl.train_data[workers_to_be_used[0]]['y'][0:10]))
                 fl.create_workers_model(workers_to_be_used)
-                train_data_loader, test_data_loader = fl.create_datasets(workers_to_be_used)
+                
+                ###############################################
+                # Check the distance based on the initial values of weights
+                distance = get_distance(fl.workers_model[worker_id], trained_server_model)
+                logging.info("Initial Model Distance: [{}]".format(distance))
+                ###############################################
 
+
+                train_data_loader, test_data_loader = fl.create_datasets(workers_to_be_used)
                 test_acc = 0
                 for round_no in range(0, rounds_num):
                     fl.train_workers(train_data_loader, workers_to_be_used, round_no, epochs_num)
                     test_acc = fl.test(fl.workers_model[worker_id], test_data_loader, worker_id, round_no)
                     model_path_ = model_path + str(worker_id) + "_" + str(round_no) + "_" + str(round(test_acc,2))
-                    logging.info("Saving the worker model: {} ...".format(model_path_))
-                    if test_acc >= 98.5:
+                    
+                    distance = get_distance(fl.workers_model[worker_id], trained_server_model)
+                    logging.info("Trained Model Distance: [{}]\n".format(distance))
+
+                    if test_acc >= 98.0:
                         logging.info("Test accuracy is {}. Stopping the experiment...\n".format(test_acc))
                         break
                 if neptune_enable:
                     neptune.log_metric("accuracy_overal", test_acc)
+                    neptune.log_metric("Distance", distance)
                 if save_model:
                     logging.info("Saving the model to: {}".format(model_path_))
                     torch.save(fl.workers_model[worker_id], model_path_)
 
+        elif arguments['--normal']:
+            for worker_id in workers_to_be_used:
+    
+                # contains sth like this ['f_353']
+                workers_to_be_used = [worker_id]
+                fl.create_workers(workers_to_be_used)
+
+                logging.debug("Some sample train labels for user {}: {}".format(workers_to_be_used[0], fl.train_data[workers_to_be_used[0]]['y'][0:10]))
+                fl.create_workers_model(workers_to_be_used)
+                
+                ###############################################
+                # Check the distance based on the initial values of weights
+                distance = get_distance(fl.workers_model[worker_id], trained_server_model)
+                logging.info("Initial Model Distance: [{}]".format(distance))
+                ###############################################
+
+                train_data_loader, test_data_loader = fl.create_datasets(workers_to_be_used)
+                test_acc = 0
+                for round_no in range(0, rounds_num):
+                    fl.train_workers(train_data_loader, workers_to_be_used, round_no, epochs_num)
+                    test_acc = fl.test(fl.workers_model[worker_id], test_data_loader, worker_id, round_no)
+                    model_path_ = model_path + str(worker_id) + "_" + str(round_no) + "_" + str(round(test_acc,2))
+                    
+                    distance = get_distance(fl.workers_model[worker_id], trained_server_model)
+                    logging.info("Trained Model Distance: [{}]\n".format(distance))
+
+                    if test_acc >= 98.0:
+                        logging.info("Test accuracy is {}. Stopping the experiment...\n".format(test_acc))
+                        break
+                if neptune_enable:
+                    neptune.log_metric("accuracy_overal", test_acc)
+                    neptune.log_metric("Distance", distance)
+                if save_model:
+                    logging.info("Saving the model to: {}".format(model_path_))
+                    torch.save(fl.workers_model[worker_id], model_path_)
         else:
+
             start_idx = int(arguments['--start']) 
             end_idx = int(arguments['--end']) 
             worker_idx = start_idx
@@ -171,5 +241,6 @@ if __name__ == '__main__':
             
     else:
         raise Exception("Wrong arguments!")
+
 
 

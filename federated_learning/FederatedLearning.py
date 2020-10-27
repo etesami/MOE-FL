@@ -309,19 +309,38 @@ class FederatedLearning():
         return labels_to_be_changed
 
 
+    # # '''
+    # # Attack convert to black
+    # # '''
+    # def attack_robust_aggregation(self, selected_workers_id):
+    #     logging.info("ATTACK 1: {} of workers are affected".format(len(selected_workers_id)))
+    #     logging.debug("Some Affected workers: {}...".format(selected_workers_id[0:5]))  
+
+    #     for worker_id in selected_workers_id:
+        
+    #         for pixel_id in len(self.train_data[worker_id]['x']):
+    #             self.train_data[worker_id]['x'][pixel_id] = 
+    #             self.train_data[worker_id]['y'][indexes_first_digit] = labels_to_be_changed[l + 1]
+    #             self.train_data[worker_id]['y'][indexes_sec_digit] = labels_to_be_changed[l]
+            
+    #         logging.debug("Worker Labels (After): {}\n".format(self.train_data[worker_id]['y'][0:10]))
+    #     return selected_workers_id
+        
+
+    def get_subset_of_workers(self, workers_percentage):
+        NUM_MAL_WORKERS = round(workers_percentage * len(self.workers_id) / 100.0)
+        selected_workers_idx = random.sample(range(len(self.workers_id)), NUM_MAL_WORKERS)
+        selected_workers_id = [self.workers_id[i] for i in selected_workers_idx]
+        logging.debug("Total selected workers: {}".format(len(selected_workers_id)))
+        return selected_workers_id
+    
     # '''
     # Attack 1
     # Permute all labels for given workers' id
     # workers_id_list: the list of workers' id (zero-based)
     # '''
-    def attack_permute_labels_randomly(self, workers_percentage, data_percentage):
-        logging.info("ATTACK 1: Permute labels of {} percentage of workers".format(workers_percentage))
-        
-        NUM_MAL_WORKERS = round(workers_percentage * len(self.workers_id) / 100.0)
-        selected_workers_idx = random.sample(range(len(self.workers_id)), NUM_MAL_WORKERS)
-        selected_workers_id = [self.workers_id[i] for i in selected_workers_idx]
-        logging.debug("Total selected Bad workers: {}".format(len(selected_workers_id)))
-
+    def attack_permute_labels_randomly(self, selected_workers_id, data_percentage):
+        logging.info("ATTACK 1: Permute labels of {} workers".format(len(selected_workers_id)))
         logging.debug("Some Affected workers: {}...".format(selected_workers_id[0:5]))  
 
         for worker_id in selected_workers_id:
@@ -369,8 +388,7 @@ class FederatedLearning():
                 self.train_data[worker_id]['y'][indexes_sec_digit] = labels_to_be_changed[l]
             
             logging.debug("Worker Labels (After): {}\n".format(self.train_data[worker_id]['y'][0:10]))
-        return selected_workers_id
-
+            
 
     def attack_permute_labels_collaborative(self, workers_percentage, data_percentage):
         logging.info("ATTACK 2: Permute {} percentage of labels of the {} percentage of workers".format(data_percentage, workers_percentage))
@@ -554,7 +572,7 @@ class FederatedLearning():
                 test_acc)
             file.write(TO_FILE)
             file.close()
-        logging.info('Test set [{}]: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        logging.info('Test set [{}]: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
             test_name, test_loss, correct, len(test_loader.dataset),
             test_acc))
         return test_acc
