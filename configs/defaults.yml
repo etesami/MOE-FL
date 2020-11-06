@@ -1,23 +1,26 @@
 runtime:
     # epochs_num: 2
     # rounds_num: 2
-    batch_size: 20
-    test_batch_size: 4
-    lr: 0.1
+    lr: 0.01
+    alpha: 0
+    batch_size: 50
+    public_data_percentage: 30
+    test_batch_size: 20
     momentum: 0.5
+    mnist_workers_num: 30
     train_workers_num: 3383  # Total number of users which participate in training in each round (Total: 3383)
     random_seed: 12345
     save_model: False
     model_path: "/home/ubuntu/FederatedLearning/data/"
 data:
-    MNIST_PATH: "/home/ubuntu/data/MNIST/processed_manual"
+    MNIST_PATH: "/home/ubuntu/data/MNIST"
     EMNIST_PATH: "/home/ubuntu/EMNIST/"
     FEMNIST_PATH: "/home/ubuntu/leaf/data/femnist/data"
     EMNIST_GOOGLE_PATH: "/home/ubuntu/data/fed_google"
 log:
     level: INFO
-    interval: 2
-    output_dir: "data_tmp"
+    interval: 10
+    output_dir: "data_output"
     # output_prefix: "test_"
     neptune_init: "ehsan/sandbox"
     neptune_exp: "evaluation_01"

@@ -8,8 +8,7 @@ import cvxpy as cp
 import tensorflow as tf
 import numpy as np
 import logging
-import idx2numpy
-from mnist import MNIST
+# from mnist import MNIST
 import os
 import random
 import math
@@ -34,6 +33,12 @@ class FederatedLearning():
         self.server_model = None
         self.train_data = None
         self.test_data = None
+        # Example MNIST: (train and test look similar)
+        #   train images: self.train_data['x']
+        #   train labels: self.train_data['y']
+        # Example EMNIST and FEMNIST: (train and test look similar)
+        #   train images: self.train_data['f000_1']['x']
+        #   train labels: self.train_data['f000_1']['y']
         
         self.hook = sy.TorchHook(torch)
         use_cuda = False
@@ -71,15 +76,20 @@ class FederatedLearning():
         logging.info("Creating the server...")
         self.server = sy.VirtualWorker(self.hook, id="server")
 
+    
+    def create_federated_mnist(self, data_set, batch_size, shuffle):
+        fed_dataloader = sy.FederatedDataLoader(
+        FLCustomDataset(
+            data_set['x'],
+            data_set['y'],
+            transform=transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.1307,), (0.3081,))]))
+            .federate([worker for _, worker in self.workers.items()]),
+            batch_size=batch_size, 
+            shuffle=shuffle)
 
-    def load_mnist_data_training(self):
-        file_path = "/train-images-idx3-ubyte"
-        train_images = idx2numpy.convert_from_file(self.data_path + file_path)
-        
-        file_path = "/train-labels-idx1-ubyte"
-        train_labels = idx2numpy.convert_from_file(self.data_path + file_path)
-        
-        self.train_images, self.train_labels = train_images.copy(), train_labels.copy()
+        return fed_dataloader
 
 
     def load_emnist_data_training_binary(self):
@@ -226,6 +236,45 @@ class FederatedLearning():
 
         return train_dataset_loader, test_dataset_loader
         
+
+    # # Create aggregation in server from all users.
+    # def create_mnist_server_data(self, workers_id_list):
+    #     logging.info("Creating the aggregated data for the server from {} selected users...".format(len(workers_id_list)))
+    #     # Fraction of public data of each user, which be shared by the server
+    #     aggregated_image = np.array([], dtype = np.single).reshape(-1, 28, 28)
+    #     aggregated_label = np.array([], dtype = np.single)
+    #     fraction = 0.2 
+    #     total_samples_count = 0
+    #     for worker_id in workers_id_list:
+    #         worker_samples_count = len(self.train_data[worker_id]['y'])
+            
+    #         num_samples_for_server = math.floor(fraction * len(self.train_data[worker_id]['y']))
+    #         logging.debug("Sending {} from client {} with total {}".format(
+    #             num_samples_for_server, worker_id, worker_samples_count
+    #         ))
+    #         total_samples_count = total_samples_count + num_samples_for_server
+    #         indices = random.sample(range(worker_samples_count), num_samples_for_server)
+            
+    #         images = np.array([self.train_data[worker_id]['x'][i] for i in indices], dtype = np.single).reshape(-1, 28, 28)
+    #         labels = np.array([self.train_data[worker_id]['y'][i] for i in indices], dtype = np.single)
+    #         aggregated_image = np.concatenate((aggregated_image, images))
+    #         aggregated_label = np.concatenate((aggregated_label, labels))
+
+    #     logging.info("Selected {} samples in total for the server from all users.".format(total_samples_count))
+    #     logging.debug("Aggregated train images shape: {}, dtype: {}".format(
+    #         aggregated_image.shape, aggregated_image.dtype))
+    #     logging.debug("Aggregated train images label: {}, dtype: {}".format(
+    #         aggregated_label.shape, aggregated_label.dtype))
+
+    #     aggregated_dataset = sy.BaseDataset(torch.Tensor(aggregated_image),\
+    #         torch.Tensor(aggregated_label), \
+    #         transform=transforms.Compose([transforms.ToTensor()]))
+        
+    #     aggregated_dataloader = sy.FederatedDataLoader(
+    #         aggregated_dataset.federate([self.server]), batch_size = self.batch_size, shuffle = True, drop_last = True, **self.kwargs)
+
+    #     return aggregated_dataloader
+
 
     # Create aggregation in server from all users.
     def create_aggregated_data(self, workers_id_list):
@@ -514,8 +563,8 @@ class FederatedLearning():
                 if self.workers_model[ww_id].location is None \
                         or self.workers_model[ww_id].location.id != ww_id:
                     self.workers_model[ww_id].send(self.workers[ww_id])
-                workers_opt[ww_id] = optim.SGD(params=self.workers_model[ww_id].parameters(), lr=self.lr, weight_decay=self.weight_decay)
-                # workers_opt[ww_id] = optim.Adam(params=self.workers_model[ww_id].parameters(), lr=self.lr)
+                workers_opt[ww_id] = optim.SGD(
+                    params=self.workers_model[ww_id].parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
             for batch_idx, (data, target) in enumerate(federated_train_loader):
                 worker_id = data.location.id
@@ -544,6 +593,11 @@ class FederatedLearning():
                         len(federated_train_loader) * self.batch_size,
                         100. * batch_idx / len(federated_train_loader), loss.item()))
         print()
+
+
+    def save_model(self, model_idx_list, save_path):
+        for model_id in model_idx_list:
+            torch.save(self.workers_model[model_id], save_path + model_id)
 
 
     def test(self, model, test_loader, test_name, round_no):
@@ -614,7 +668,7 @@ class FederatedLearning():
             100. * correct / len(test_loader.dataset)))
 
 
-    def find_best_weights(self, workers_to_be_used, round_no):
+    def find_best_weights(self, workers_to_be_used):
         # reference_model = self.server_model
         # workers_model = self.workers_model
         # if self.log_enable:

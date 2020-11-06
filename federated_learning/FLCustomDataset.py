@@ -12,23 +12,23 @@ class FLCustomDataset(Dataset):
         self.targets = labels
         # <--The data and target must be converted to torch
         # tensors before it is returned by __getitem__ method
-        self.to_torchtensor()
+        # self.to_torchtensor()
         # <--If any transforms have to be performed on the dataset
         self.transform = transform
 
-    def to_torchtensor(self):
-        self.data = torch.from_numpy(self.data)
-        self.labels = torch.from_numpy(self.targets)
+    # def to_torchtensor(self):
+    #     self.data = torch.from_numpy(self.data)
+    #     self.labels = torch.from_numpy(self.targets)
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        sample, target = self.data[idx], int(self.targets[idx])
+        sample, target = self.data[idx], self.targets[idx]
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
-        img = Image.fromarray(sample.numpy(), mode='L')
+        # img = Image.fromarray(sample.numpy(), mode='L')
         if self.transform is not None:
-            img = self.transform(img)
+            img = self.transform(sample)
 
         return img, target

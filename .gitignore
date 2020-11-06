@@ -1,5 +1,7 @@
+**/.ipynb_checkpoints/**
 **/.vscode
 **/data_tmp
+**/data_output
 **/data
 **/*.pvc
 **/__pycache__
