@@ -29,6 +29,6 @@ class FLCustomDataset(Dataset):
         # to return a PIL Image
         # img = Image.fromarray(sample.numpy(), mode='L')
         if self.transform is not None:
-            img = self.transform(sample)
+            sample = self.transform(sample)
 
-        return img, target
+        return sample, target

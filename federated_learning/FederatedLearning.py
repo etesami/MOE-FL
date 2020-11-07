@@ -8,7 +8,6 @@ import cvxpy as cp
 import tensorflow as tf
 import numpy as np
 import logging
-# from mnist import MNIST
 import os
 import random
 import math
@@ -21,9 +20,10 @@ import neptune
 class FederatedLearning():
 
     # Initializing variables
-    def __init__(self, batch_size, test_batch_size, lr, wieght_decay, momentum, neptune_enable, log_enable, log_interval, log_level, output_dir, output_prefix, random_seed, save_model):
+    def __init__(
+        self, batch_size, test_batch_size, lr, wieght_decay, momentum, neptune_enable, 
+        log_enable, log_interval, output_dir, random_seed):
         
-        logging.basicConfig(format='%(asctime)s %(message)s', level=log_level)
         logging.info("Initializing Federated Learning class...")
 
         self.workers = dict()
@@ -54,12 +54,8 @@ class FederatedLearning():
         self.log_interval = log_interval
         self.log_enable = log_enable
         self.neptune_enable = neptune_enable
-        self.save_model = save_model
         self.weight_decay = wieght_decay
-        
-        self.output_prefix = output_prefix
-        self.output_dir = output_dir
-        self.log_file_path = self.output_dir + "/" + self.output_prefix
+        self.log_file_path = output_dir
 
 
     def create_workers(self, workers_id_list):
@@ -77,15 +73,24 @@ class FederatedLearning():
         self.server = sy.VirtualWorker(self.hook, id="server")
 
     
-    def create_federated_mnist(self, data_set, batch_size, shuffle):
+    def create_federated_mnist(self, dataset, destination_idx, batch_size, shuffle):
+        """ 
+
+        Args:
+            destination_idx (list[str]): Path to the config file
+            dataset (FLCustomDataset): Dataset to be federated
+        Returns:
+            Obj: Corresponding python object
+        """    
+        workers = []
+        if "server" in destination_idx:
+            workers.append(self.server)
+        else:
+            for worker_id, worker in self.workers.items():
+                worker_id in destination_idx and workers.append(worker)
+
         fed_dataloader = sy.FederatedDataLoader(
-        FLCustomDataset(
-            data_set['x'],
-            data_set['y'],
-            transform=transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307,), (0.3081,))]))
-            .federate([worker for _, worker in self.workers.items()]),
+            dataset.federate(workers),
             batch_size=batch_size, 
             shuffle=shuffle)
 
@@ -523,13 +528,13 @@ class FederatedLearning():
                 self.train_labels[labels_indexes[labels_to_be_changed[l + 1]][indexes_sec_digit]]= labels_to_be_changed[l]
 
 
-    def train_server(self, train_server_loader, round_no, epochs_num):
+    def train_server(self, server_dataloader, round_no, epochs_num):
         self.send_model(self.server_model, self.server, "server")
-        server_opt = optim.SGD(self.server_model.parameters(), lr=self.lr)
+        server_opt = optim.SGD(self.server_model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         for epoch_no in range(epochs_num):
-            for batch_idx, (data, target) in enumerate(train_server_loader):
+            for batch_idx, (data, target) in enumerate(server_dataloader):
                 self.server_model.train()
-                data, target = data.to(self.device), target.to(self.device, dtype = torch.int64)
+                data, target = data.to(self.device), target.to(self.device)
                 server_opt.zero_grad()
                 output = self.server_model(data)
                 loss = F.nll_loss(output, target)
@@ -539,17 +544,17 @@ class FederatedLearning():
                 if batch_idx % self.log_interval == 0:
                     loss = loss.get()
                     if self.neptune_enable:
-                        neptune.log_metric('loss_server', loss)
+                        neptune.log_metric('mnist_w0', loss)
                     if self.log_enable:
-                        file = open(self.log_file_path + "_trainserver", "a")
+                        file = open(self.log_file_path + "server_train", "a")
                         TO_FILE = '{} {} {} [server] {}\n'.format(round_no, epoch_no, batch_idx, loss)
                         file.write(TO_FILE)
                         file.close()
                     logging.info('Train Round: {}, Epoch: {} [server] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                         round_no, epoch_no, batch_idx, 
                         batch_idx * self.batch_size, 
-                        len(train_server_loader) * self.batch_size,
-                        100. * batch_idx / len(train_server_loader), loss.item()))
+                        len(server_dataloader) * self.batch_size,
+                        100. * batch_idx / len(server_dataloader), loss.item()))
         # if self.log_enable:
         #     file.close()
         # Always need to get back the model
@@ -595,12 +600,14 @@ class FederatedLearning():
         print()
 
 
-    def save_model(self, model_idx_list, save_path):
-        for model_id in model_idx_list:
-            torch.save(self.workers_model[model_id], save_path + model_id)
+    def save_model(self, model, save_path):
+        logging.info("Saving the model into {}.".format(save_path))
+        torch.save(model, save_path)
+        # for model_id in model_idx_list:
+        #     torch.save(self.workers_model[model_id], save_path + model_id)
 
 
-    def test(self, model, test_loader, test_name, round_no):
+    def test(self, model, test_loader, round_no):
         self.getback_model(model)
         model.eval()
         test_loss = 0
@@ -616,19 +623,18 @@ class FederatedLearning():
         test_loss /= len(test_loader.dataset)
         test_acc = 100. * correct / len(test_loader.dataset)
         if self.neptune_enable:
-            neptune.log_metric(test_name + "_test_loss", test_loss)
-            neptune.log_metric(test_name + "_test_acc", test_acc)
+            neptune.log_metric(self.log_file_path + "server_test_loss", test_loss)
+            neptune.log_metric(self.log_file_path  + "server_test_acc", test_acc)
         if self.log_enable:
-            file = open(self.log_file_path + "_" + str(test_name) + "_test", "a")
+            file = open(self.log_file_path + "server_test", "a")
             TO_FILE = '{} {} "{{/*Accuracy:}}\\n{}%" {}\n'.format(
                 round_no, test_loss, 
                 test_acc,
                 test_acc)
             file.write(TO_FILE)
             file.close()
-        logging.info('Test set [{}]: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
-            test_name, test_loss, correct, len(test_loader.dataset),
-            test_acc))
+        logging.info('Test Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+            test_loss, correct, len(test_loader.dataset), test_acc))
         return test_acc
 
 

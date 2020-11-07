@@ -19,8 +19,7 @@ data:
     EMNIST_GOOGLE_PATH: "/home/ubuntu/data/fed_google"
 log:
     level: INFO
-    interval: 10
-    output_dir: "data_output"
-    # output_prefix: "test_"
+    interval: 20
+    root_output_dir: "data_output"
     neptune_init: "ehsan/sandbox"
     neptune_exp: "evaluation_01"
