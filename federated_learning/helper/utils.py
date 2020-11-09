@@ -39,14 +39,25 @@ def make_output_dir(root_dir, output_prefix):
     return output_dir
 
 
-def load_mnist_data_train(data_dir):
-    logging.info("Loading train data from MNIST dataset.")
+def load_mnist_data_train(data_dir, percentage):
+    """ 
+    Args:
+        data_dir (str): 
+        percentage (float): Out of 100, how much oof data is imported
+    Returns:
+        
+    """  
+    logging.info("Loading {}% of train data from MNIST dataset.".format(percentage))
     file_path = "/train-images-idx3-ubyte"
     train_data = dict()
     train_data['x'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.float32)
     
+    # Save only some percentage of data
+    train_data['x'] = train_data['x'][:int((float(percentage) / 100.0) * len(train_data['x']))]
+    
     file_path = "/train-labels-idx1-ubyte"
     train_data['y'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.int64)
+    train_data['y'] = train_data['y'][:int((float(percentage) / 100.0) * len(train_data['y']))]
 
     return train_data
     
@@ -64,10 +75,16 @@ def load_mnist_data_test(data_dir):
 
 
 def preprocess_mnist(dataset):
+    """ 
+    Args:
+        dataset (dict of str: numpy array):
+
+    Returns:
+        
+    """ 
     logging.info("Preparing the MNIST dataset.")
-    # dataset: dict() contains numpy array images and labels
-    #    dataset['x'] images
-    #    dataset['y'] labels
+    # dataset['x'] images
+    # dataset['y'] labels
     max_pixel = dataset['x'].max()
     if max_pixel.max() > 1:
         images = dataset['x'] / 255.0
@@ -75,7 +92,14 @@ def preprocess_mnist(dataset):
     return dataset
 
 
-def get_server_dataloader(dataloader, percentage):
+def get_server_dataset(dataloader, percentage):
+    """ 
+    Args:
+        dataloader (torch.Dataloader): 
+        percentage (float): Out of 100
+    Returns:
+        (FLCustomDataset)
+    """  
     logging.info("Creating server MNIST data loader.")
     # Each batch is supposed to be assigned to a worker. 
     # We just take out a percentage of each batch and save it for the server
@@ -98,13 +122,32 @@ def get_server_dataloader(dataloader, percentage):
     return FLCustomDataset(server_dataset['x'], server_dataset['y'])
 
 
-def get_mnist_dataloader(dataset, batch_size_):
+def get_mnist_dataset(raw_dataset):
+    """ 
+    Args:
+        raw_dataset (list[numpy array]): 
+    Returns:
+        
+    """    
+    logging.info("Creating MNIST dataset.")
+    return FLCustomDataset(
+        raw_dataset['x'],
+        raw_dataset['y'],
+        transform=transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307,), (0.3081,))])
+    )
+
+
+def get_mnist_dataloader(dataset, batch_size, shuffle):
+    """ 
+    Args:
+        dataset (FLCustomDataset): 
+        batch_size (int):
+    Returns:
+        
+    """    
     logging.info("Creating MNIST data loader.")
     return DataLoader(
-        FLCustomDataset(
-            dataset['x'],
-            dataset['y'],
-            transform=transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307,), (0.3081,))])),
-        batch_size=batch_size_ , shuffle=True)
+        dataset,
+        batch_size=batch_size , shuffle=shuffle)

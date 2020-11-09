@@ -5,7 +5,6 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 import syft as sy
 import cvxpy as cp
-import tensorflow as tf
 import numpy as np
 import logging
 import os
@@ -77,8 +76,8 @@ class FederatedLearning():
         """ 
 
         Args:
-            destination_idx (list[str]): Path to the config file
             dataset (FLCustomDataset): Dataset to be federated
+            destination_idx (list[str]): Path to the config file
         Returns:
             Obj: Corresponding python object
         """    
@@ -544,7 +543,7 @@ class FederatedLearning():
                 if batch_idx % self.log_interval == 0:
                     loss = loss.get()
                     if self.neptune_enable:
-                        neptune.log_metric('mnist_w0', loss)
+                        neptune.log_metric('train_w0_loss', loss)
                     if self.log_enable:
                         file = open(self.log_file_path + "server_train", "a")
                         TO_FILE = '{} {} {} [server] {}\n'.format(round_no, epoch_no, batch_idx, loss)
@@ -576,7 +575,7 @@ class FederatedLearning():
                 worker_model = self.workers_model[worker_id]
                 worker_opt = workers_opt[worker_id]
                 worker_model.train()
-                data, target = data.to(self.device), target.to(self.device, dtype = torch.int64)
+                data, target = data.to(self.device), target.to(self.device)
                 worker_opt.zero_grad()
                 output = worker_model(data)
                 loss = F.nll_loss(output, target)
@@ -586,9 +585,9 @@ class FederatedLearning():
                 if batch_idx % self.log_interval == 0:
                     loss = loss.get()
                     if self.neptune_enable:
-                        neptune.log_metric("loss_" + str(worker_id), loss)
+                        neptune.log_metric("train_loss_" + str(worker_id), loss)
                     if self.log_enable:
-                        file = open(self.log_file_path + "_" + str(worker_id) + "_train", "a")
+                        file = open(self.log_file_path + str(worker_id) + "_train", "a")
                         TO_FILE = '{} {} {} {} {}\n'.format(round_no, epoch_no, batch_idx, worker_id, loss)
                         file.write(TO_FILE)
                         file.close()
@@ -600,11 +599,21 @@ class FederatedLearning():
         print()
 
 
-    def save_model(self, model, save_path):
-        logging.info("Saving the model into {}.".format(save_path))
-        torch.save(model, save_path)
-        # for model_id in model_idx_list:
-        #     torch.save(self.workers_model[model_id], save_path + model_id)
+    def save_workers_model(self, workers_idx, round_no):
+        logging.info("Saving models {}".format(workers_idx))
+        for worker_id, worker_model in self.workers_model.items():
+            if worker_id in workers_idx:
+                self.save_model(worker_model, "R{}_{}".format(round_no, worker_id))
+        
+
+    def save_model(self, model, name):
+        parent_dir = "{}{}".format(self.log_file_path, "models")
+        if not os.path.isdir(parent_dir):
+            logging.debug("Create a directory for model(s).")
+            os.mkdir(parent_dir)
+        full_path = "{}/{}".format(parent_dir, name)
+        logging.debug("Saving the model into " + full_path)
+        torch.save(model, full_path)
 
 
     def test(self, model, test_loader, round_no):
@@ -623,8 +632,8 @@ class FederatedLearning():
         test_loss /= len(test_loader.dataset)
         test_acc = 100. * correct / len(test_loader.dataset)
         if self.neptune_enable:
-            neptune.log_metric(self.log_file_path + "server_test_loss", test_loss)
-            neptune.log_metric(self.log_file_path  + "server_test_acc", test_acc)
+            neptune.log_metric("test_loss", test_loss)
+            neptune.log_metric("test_acc", test_acc)
         if self.log_enable:
             file = open(self.log_file_path + "server_test", "a")
             TO_FILE = '{} {} "{{/*Accuracy:}}\\n{}%" {}\n'.format(
@@ -638,58 +647,56 @@ class FederatedLearning():
         return test_acc
 
 
-    def test_workers(self, model, test_loader, epoch, test_name):
-        self.getback_model(model)
-        model.eval()
-        test_loss = 0
-        correct = 0
-        with torch.no_grad():
-            for batch_idx, (data, target) in enumerate(test_loader):
-                # print("Batch {}".format(batch_idx))
-                # print("Shape of Test data {}".format(data.shape))
-                # print("Shape of Target data {}".format(target.shape))
-                data, target = data.to(self.device), target.to(self.device, dtype=torch.int64)
-                output = model(data)
-                # print("Test Output: {} and the target is {}".format(output, target))
-                # print("Output type: {}".format(type(output.data)))
-                # print("Target type: {}".format(target.type()))
-                test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-                pred = output.argmax(1, keepdim=True)  # get the index of the max log-probability
-                # print("--> Pred: {}, Target: {}".format(pred, target))
-                correct += pred.eq(target.view_as(pred)).sum().item()
+    # def test_workers(self, model, test_loader, epoch, test_name):
+    #     self.getback_model(model)
+    #     model.eval()
+    #     test_loss = 0
+    #     correct = 0
+    #     with torch.no_grad():
+    #         for batch_idx, (data, target) in enumerate(test_loader):
+    #             # print("Batch {}".format(batch_idx))
+    #             # print("Shape of Test data {}".format(data.shape))
+    #             # print("Shape of Target data {}".format(target.shape))
+    #             data, target = data.to(self.device), target.to(self.device, dtype=torch.int64)
+    #             output = model(data)
+    #             # print("Test Output: {} and the target is {}".format(output, target))
+    #             # print("Output type: {}".format(type(output.data)))
+    #             # print("Target type: {}".format(target.type()))
+    #             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+    #             pred = output.argmax(1, keepdim=True)  # get the index of the max log-probability
+    #             # print("--> Pred: {}, Target: {}".format(pred, target))
+    #             correct += pred.eq(target.view_as(pred)).sum().item()
 
-        test_loss /= len(test_loader.dataset)
-        if self.neptune_enable:
-            neptune.log_metric("test_loss_" + test_name, test_loss)
-            neptune.log_metric("test_acc_" + test_name, 100. * correct / len(test_loader.dataset))
-            # file = open(self.output_prefix + "_test", "a")
-            # TO_FILE = '{} {} "{{/*0.80 Accuracy:}}\\n{}%" {}\n'.format(
-            #     epoch, test_loss, 
-            #     100. * correct / len(test_loader.dataset),
-            #     100. * correct / len(test_loader.dataset))
-            # file.write(TO_FILE)
-            # file.close()
-        logging.info('Test set [{}]: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-            test_name, test_loss, correct, len(test_loader.dataset),
-            100. * correct / len(test_loader.dataset)))
+    #     test_loss /= len(test_loader.dataset)
+    #     if self.neptune_enable:
+    #         neptune.log_metric("test_loss_" + test_name, test_loss)
+    #         neptune.log_metric("test_acc_" + test_name, 100. * correct / len(test_loader.dataset))
+    #         # file = open(self.output_prefix + "_test", "a")
+    #         # TO_FILE = '{} {} "{{/*0.80 Accuracy:}}\\n{}%" {}\n'.format(
+    #         #     epoch, test_loss, 
+    #         #     100. * correct / len(test_loader.dataset),
+    #         #     100. * correct / len(test_loader.dataset))
+    #         # file.write(TO_FILE)
+    #         # file.close()
+    #     logging.info('Test set [{}]: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+    #         test_name, test_loss, correct, len(test_loader.dataset),
+    #         100. * correct / len(test_loader.dataset)))
 
 
-    def find_best_weights(self, workers_to_be_used):
+    def find_best_weights(self, trained_model, workers_to_be_used):
         # reference_model = self.server_model
         # workers_model = self.workers_model
-        # if self.log_enable:
-            # file = open(self.output_prefix + "_weights", "a")
-        self.getback_model(self.server_model)
+        # self.getback_model(self.server_model)
         with torch.no_grad():
             reference_layers = [None] * 8
-            reference_layers[0] = self.server_model.conv1.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[1] = self.server_model.conv1.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[2] = self.server_model.conv2.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[3] = self.server_model.conv2.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[4] = self.server_model.fc1.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[5] = self.server_model.fc1.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[6] = self.server_model.fc2.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[7] = self.server_model.fc2.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[0] = trained_model.conv1.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[1] = trained_model.conv1.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[2] = trained_model.conv2.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[3] = trained_model.conv2.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[4] = trained_model.fc1.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[5] = trained_model.fc1.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[6] = trained_model.fc2.weight.data.numpy().copy().reshape(-1, 1).ravel()
+            reference_layers[7] = trained_model.fc2.bias.data.numpy().copy().reshape(-1, 1).ravel()
 
             workers_params = {}
             """
@@ -781,15 +788,17 @@ class FederatedLearning():
             result = prob.solve(solver=cp.MOSEK)
             logging.info(W.value)
             logging.info("")
-            # TO_FILE = '{} {}\n'.format(round_no, np.array2string(W.value).replace('\n',''))
-            # file.write(TO_FILE)
-            # file.close()
+            if self.log_enable:
+                file = open(self.log_file_path + "opt_weights", "a")
+                TO_FILE = '{}\n'.format(np.array2string(W.value).replace('\n',''))
+                file.write(TO_FILE)
+                file.close()
             return W.value
 
 
-    def update_models(self, alpha, W, server_model, workers_model, workers_to_be_used):
-        self.getback_model(workers_model, workers_to_be_used)
-        self.getback_model(server_model)
+    def update_models(self, alpha, W, workers_to_be_used):
+        self.getback_model(self.workers_model, workers_to_be_used)
+        self.getback_model(self.server_model)
         tmp_model = FLNet().to(self.device)
 
         with torch.no_grad():
@@ -804,7 +813,7 @@ class FederatedLearning():
 
             counter = 0
             for worker_id in workers_to_be_used:
-                worker_model = workers_model[worker_id]
+                worker_model = self.workers_model[worker_id]
                 tmp_model.conv1.weight.data = (
                         tmp_model.conv1.weight.data + W[counter] * worker_model.conv1.weight.data)
                 tmp_model.conv1.bias.data = (
@@ -824,25 +833,25 @@ class FederatedLearning():
                 counter = counter + 1
 
 
-            server_model.conv1.weight.data = alpha * server_model.conv1.weight.data + (1 - alpha) * tmp_model.conv1.weight.data
-            server_model.conv1.bias.data = alpha * server_model.conv1.bias.data + (1 - alpha) * tmp_model.conv1.bias.data
-            server_model.conv2.weight.data = alpha * server_model.conv2.weight.data + (1 - alpha) * tmp_model.conv2.weight.data
-            server_model.conv2.bias.data = alpha * server_model.conv2.bias.data + (1 - alpha) * tmp_model.conv2.bias.data
-            server_model.fc1.weight.data = alpha * server_model.fc1.weight.data + (1 - alpha) * tmp_model.fc1.weight.data
-            server_model.fc1.bias.data = alpha * server_model.fc1.bias.data + (1 - alpha) * tmp_model.fc1.bias.data
-            server_model.fc2.weight.data = alpha * server_model.fc2.weight.data + (1 - alpha) * tmp_model.fc2.weight.data
-            server_model.fc2.bias.data = alpha * server_model.fc2.bias.data + (1 - alpha) * tmp_model.fc2.bias.data
+            self.server_model.conv1.weight.data = alpha * self.server_model.conv1.weight.data + (1 - alpha) * tmp_model.conv1.weight.data
+            self.server_model.conv1.bias.data = alpha * self.server_model.conv1.bias.data + (1 - alpha) * tmp_model.conv1.bias.data
+            self.server_model.conv2.weight.data = alpha * self.server_model.conv2.weight.data + (1 - alpha) * tmp_model.conv2.weight.data
+            self.server_model.conv2.bias.data = alpha * self.server_model.conv2.bias.data + (1 - alpha) * tmp_model.conv2.bias.data
+            self.server_model.fc1.weight.data = alpha * self.server_model.fc1.weight.data + (1 - alpha) * tmp_model.fc1.weight.data
+            self.server_model.fc1.bias.data = alpha * self.server_model.fc1.bias.data + (1 - alpha) * tmp_model.fc1.bias.data
+            self.server_model.fc2.weight.data = alpha * self.server_model.fc2.weight.data + (1 - alpha) * tmp_model.fc2.weight.data
+            self.server_model.fc2.bias.data = alpha * self.server_model.fc2.bias.data + (1 - alpha) * tmp_model.fc2.bias.data
 
             # for worker_id in workers_model.keys():
             for worker_id in workers_to_be_used:
-                workers_model[worker_id].conv1.weight.data = server_model.conv1.weight.data
-                workers_model[worker_id].conv1.bias.data = server_model.conv1.bias.data
-                workers_model[worker_id].conv2.weight.data = server_model.conv2.weight.data
-                workers_model[worker_id].conv2.bias.data = server_model.conv2.bias.data
-                workers_model[worker_id].fc1.weight.data = server_model.fc1.weight.data
-                workers_model[worker_id].fc1.bias.data = server_model.fc1.bias.data
-                workers_model[worker_id].fc2.weight.data = server_model.fc2.weight.data
-                workers_model[worker_id].fc2.bias.data = server_model.fc2.bias.data
+                self.workers_model[worker_id].conv1.weight.data = self.server_model.conv1.weight.data
+                self.workers_model[worker_id].conv1.bias.data = self.server_model.conv1.bias.data
+                self.workers_model[worker_id].conv2.weight.data = self.server_model.conv2.weight.data
+                self.workers_model[worker_id].conv2.bias.data = self.server_model.conv2.bias.data
+                self.workers_model[worker_id].fc1.weight.data = self.server_model.fc1.weight.data
+                self.workers_model[worker_id].fc1.bias.data = self.server_model.fc1.bias.data
+                self.workers_model[worker_id].fc2.weight.data = self.server_model.fc2.weight.data
+                self.workers_model[worker_id].fc2.bias.data = self.server_model.fc2.bias.data
 
     def create_server_model(self):
         logging.info("Creating a model for the server...")

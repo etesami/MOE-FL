@@ -4,10 +4,11 @@ runtime:
     lr: 0.01
     alpha: 0
     batch_size: 50
-    public_data_percentage: 30
     test_batch_size: 20
     momentum: 0.5
     mnist_workers_num: 30
+    public_data_percentage: 30
+    mnist_data_percentage: 30
     train_workers_num: 3383  # Total number of users which participate in training in each round (Total: 3383)
     random_seed: 12345
     save_model: False
@@ -19,7 +20,7 @@ data:
     EMNIST_GOOGLE_PATH: "/home/ubuntu/data/fed_google"
 log:
     level: INFO
-    interval: 20
+    interval: 5
     root_output_dir: "data_output"
     neptune_init: "ehsan/sandbox"
     neptune_exp: "evaluation_01"

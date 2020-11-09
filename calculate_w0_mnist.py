@@ -12,7 +12,6 @@ from federated_learning.FederatedLearning import FederatedLearning
 from federated_learning.helper import utils
 arguments = docopt(__doc__)
 CONFIG_PATH = 'configs/defaults.yml'
-MNIST_PATH = "/home/ubuntu/data/MNIST"
 
 # arguments = docopt(__doc__)
 ############ TEMPORARILY ################
@@ -20,7 +19,7 @@ MNIST_PATH = "/home/ubuntu/data/MNIST"
 arguments['--reg'] = 0.0
 arguments['--output-prefix'] = "mnist_w0"
 arguments['--local-log'] = "True"
-arguments['--neptune-log'] = False
+arguments['--neptune-log'] = "True"
 ############ TEMPORARILY ################
 
 
@@ -66,18 +65,21 @@ if __name__ == '__main__':
     fl.create_server()
     fl.create_server_model()
 
-    train_data = utils.preprocess_mnist(
-        utils.load_mnist_data_train(MNIST_PATH))
+    train_raw_dataset = utils.preprocess_mnist(
+        utils.load_mnist_data_train(
+            configs['data']['MNIST_PATH'], 
+            configs['runtime']['mnist_data_percentage']))
+    train_dataset = utils.get_mnist_dataset(train_raw_dataset)
     train_dataloader = utils.get_mnist_dataloader(
-        train_data, configs['runtime']['batch_size'])
+        train_dataset, configs['runtime']['batch_size'], shuffle=True)
 
-    test_data = utils.load_mnist_data_test(MNIST_PATH)
+    test_data = utils.load_mnist_data_test(configs['data']['MNIST_PATH'])
+    test_dataset = utils.get_mnist_dataset(test_data)
     test_dataloader = utils.get_mnist_dataloader(
-        test_data, configs['runtime']['test_batch_size'])
+        test_dataset, configs['runtime']['test_batch_size'], shuffle=True)
     
-    server_dataset = utils.get_server_dataloader(
+    server_dataset = utils.get_server_dataset(
         train_dataloader, configs['runtime']['public_data_percentage'])
-
     federated_server_dataloader = fl.create_federated_mnist(
         server_dataset, ["server"], configs['runtime']['batch_size'], shuffle=False)
 
@@ -87,6 +89,6 @@ if __name__ == '__main__':
         fl.test(fl.server_model, test_dataloader, round_no)
         fl.save_model(
             fl.server_model, 
-            "{}/{}_{}".format(output_dir, "server_model", round_no))
+            "{}_{}".format("server_model", round_no))
         print("")
     

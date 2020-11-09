@@ -1,0 +1,16 @@
+# Need the following packages installed systemwide:
+# python-dev libsrtp2-dev libavformat-dev libavdevice-dev python3-wheel
+# 
+# pip install --upgrade pip 
+# pip install wheel setuptools
+###### Requirements ######
+numpy==1.18.1
+docopt==0.6.2
+cvxpy==1.1.7
+neptune-client==0.4.125
+h5py
+Mosek
+idx2numpy
+https://download.pytorch.org/whl/cpu/torch-1.4.0%2Bcpu-cp36-cp36m-linux_x86_64.whl
+https://download.pytorch.org/whl/cpu/torchvision-0.5.0%2Bcpu-cp36-cp36m-linux_x86_64.whl
+-e git+https://github.com/OpenMined/PySyft.git@0.2.9#egg=syft
