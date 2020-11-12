@@ -96,28 +96,28 @@ class FederatedLearning():
         return fed_dataloader
 
 
-    def load_emnist_data_training_binary(self):
-        file_path = "/emnist-digits-train-images-idx3-ubyte"
-        train_images = idx2numpy.convert_from_file(self.data_path + file_path)
+    # def load_emnist_data_training_binary(self):
+    #     file_path = "/emnist-digits-train-images-idx3-ubyte"
+    #     train_images = idx2numpy.convert_from_file(self.data_path + file_path)
         
-        file_path = "/emnist-digits-train-labels-idx1-ubyte"
-        train_labels = idx2numpy.convert_from_file(self.data_path + file_path)
+    #     file_path = "/emnist-digits-train-labels-idx1-ubyte"
+    #     train_labels = idx2numpy.convert_from_file(self.data_path + file_path)
         
-        train_images, train_labels = train_images.copy(), train_labels.copy()
-        return train_images, train_labels
+    #     train_images, train_labels = train_images.copy(), train_labels.copy()
+    #     return train_images, train_labels
 
 
-    def load_emnist_data_training(self):
-        mndata = MNIST(self.data_path + '/digits')
-        logging.info("Loading the EMNIST dataset")
-        train_images, train_labels = mndata.load_training()
-        self.train_images = np.asarray(train_images, dtype=np.uint8).reshape(-1, 28, 28)
-        self.train_labels = np.asarray(train_labels)
+    # def load_emnist_data_training(self):
+    #     mndata = MNIST(self.data_path + '/digits')
+    #     logging.info("Loading the EMNIST dataset")
+    #     train_images, train_labels = mndata.load_training()
+    #     self.train_images = np.asarray(train_images, dtype=np.uint8).reshape(-1, 28, 28)
+    #     self.train_labels = np.asarray(train_labels)
 
-        indices = np.arange(self.train_images.shape[0])
-        np.random.shuffle(indices)
-        self.train_images = self.train_images[indices]
-        self.train_labels = self.train_labels[indices]
+    #     indices = np.arange(self.train_images.shape[0])
+    #     np.random.shuffle(indices)
+    #     self.train_images = self.train_images[indices]
+    #     self.train_labels = self.train_labels[indices]
 
 
     def read_raw_data(self, data_path, get_workers = False):
@@ -151,48 +151,6 @@ class FederatedLearning():
     def load_femnist_test(self, data_dir):
         logging.info("Loading test dataset")
         _, self.test_data = self.read_raw_data(data_dir + "/test", get_workers = False)
-
-
-    def load_femnist_test_digits(self, data_dir):
-        logging.debug("Reading femnist (google) test raw data...")
-        file_name_test = "fed_emnist_digitsonly_test.h5"
-        file_path = data_dir + "/" + file_name_test
-        groups = []
-        data = defaultdict(lambda : None)
-        with h5py.File(file_path, "r") as h5_file:
-            for gname, group in h5_file.items():
-                # gname: example
-                for dname, ds in group.items():
-                    # dname: f0000_14
-                    data_ = []
-                    for a, b in ds.items():
-                        # a: label, b: list(int)
-                        # a: pixels, b: list(list(int))
-                        data_.append(b[()])
-                    data[dname] = {'x' : data_[1], 'y' : data_[0]}
-        self.test_data = data
-
-
-    def load_femnist_train_digits(self, data_dir):
-        logging.debug("Reading femnist (google) train raw data...")
-        file_name_train = "fed_emnist_digitsonly_train.h5"
-        file_path = data_dir + "/" + file_name_train
-        workers_id = []
-        groups = []
-        data = defaultdict(lambda : None)
-        with h5py.File(file_path, "r") as h5_file:
-            for gname, group in h5_file.items():
-                # gname: example
-                for dname, ds in group.items():
-                    # dname: f0000_14
-                    workers_id.append(dname)
-                    data_ = []
-                    for a, b in ds.items():
-                        # a: label, b: list(int)
-                        # a: pixels, b: list(list(int))
-                        data_.append(b[()])
-                    data[dname] = {'x' : data_[1], 'y' : data_[0]}
-        self.workers_id, self.train_data = workers_id, data
 
 
     def create_datasets(self, selected_workers_id):
@@ -796,11 +754,9 @@ class FederatedLearning():
             return W.value
 
 
-    def update_models(self, alpha, W, workers_to_be_used):
-        self.getback_model(self.workers_model, workers_to_be_used)
-        self.getback_model(self.server_model)
+    def calculate_weighted_params(self, W, workers_idx):
+        self.getback_model(self.workers_model, workers_idx)
         tmp_model = FLNet().to(self.device)
-
         with torch.no_grad():
             tmp_model.conv1.weight.data.fill_(0)
             tmp_model.conv1.bias.data.fill_(0)
@@ -812,7 +768,7 @@ class FederatedLearning():
             tmp_model.fc2.bias.data.fill_(0)
 
             counter = 0
-            for worker_id in workers_to_be_used:
+            for worker_id in workers_idx:
                 worker_model = self.workers_model[worker_id]
                 tmp_model.conv1.weight.data = (
                         tmp_model.conv1.weight.data + W[counter] * worker_model.conv1.weight.data)
@@ -831,28 +787,38 @@ class FederatedLearning():
                 tmp_model.fc2.bias.data = (
                         tmp_model.fc2.bias.data + W[counter] * worker_model.fc2.bias.data)
                 counter = counter + 1
+        return tmp_model
+    
+    
+    def update_models(self, alpha, W, workers_to_be_used, workers_update=False, server_update=True):
+        self.getback_model(self.workers_model, workers_to_be_used)
+        self.getback_model(self.server_model)
 
+        with torch.no_grad():
+            tmp_model = self.calculate_weighted_params(W, workers_to_be_used)
 
-            self.server_model.conv1.weight.data = alpha * self.server_model.conv1.weight.data + (1 - alpha) * tmp_model.conv1.weight.data
-            self.server_model.conv1.bias.data = alpha * self.server_model.conv1.bias.data + (1 - alpha) * tmp_model.conv1.bias.data
-            self.server_model.conv2.weight.data = alpha * self.server_model.conv2.weight.data + (1 - alpha) * tmp_model.conv2.weight.data
-            self.server_model.conv2.bias.data = alpha * self.server_model.conv2.bias.data + (1 - alpha) * tmp_model.conv2.bias.data
-            self.server_model.fc1.weight.data = alpha * self.server_model.fc1.weight.data + (1 - alpha) * tmp_model.fc1.weight.data
-            self.server_model.fc1.bias.data = alpha * self.server_model.fc1.bias.data + (1 - alpha) * tmp_model.fc1.bias.data
-            self.server_model.fc2.weight.data = alpha * self.server_model.fc2.weight.data + (1 - alpha) * tmp_model.fc2.weight.data
-            self.server_model.fc2.bias.data = alpha * self.server_model.fc2.bias.data + (1 - alpha) * tmp_model.fc2.bias.data
+            if server_update:
+                self.server_model.conv1.weight.data = alpha * self.server_model.conv1.weight.data + (1 - alpha) * tmp_model.conv1.weight.data
+                self.server_model.conv1.bias.data = alpha * self.server_model.conv1.bias.data + (1 - alpha) * tmp_model.conv1.bias.data
+                self.server_model.conv2.weight.data = alpha * self.server_model.conv2.weight.data + (1 - alpha) * tmp_model.conv2.weight.data
+                self.server_model.conv2.bias.data = alpha * self.server_model.conv2.bias.data + (1 - alpha) * tmp_model.conv2.bias.data
+                self.server_model.fc1.weight.data = alpha * self.server_model.fc1.weight.data + (1 - alpha) * tmp_model.fc1.weight.data
+                self.server_model.fc1.bias.data = alpha * self.server_model.fc1.bias.data + (1 - alpha) * tmp_model.fc1.bias.data
+                self.server_model.fc2.weight.data = alpha * self.server_model.fc2.weight.data + (1 - alpha) * tmp_model.fc2.weight.data
+                self.server_model.fc2.bias.data = alpha * self.server_model.fc2.bias.data + (1 - alpha) * tmp_model.fc2.bias.data
 
-            # for worker_id in workers_model.keys():
-            for worker_id in workers_to_be_used:
-                self.workers_model[worker_id].conv1.weight.data = self.server_model.conv1.weight.data
-                self.workers_model[worker_id].conv1.bias.data = self.server_model.conv1.bias.data
-                self.workers_model[worker_id].conv2.weight.data = self.server_model.conv2.weight.data
-                self.workers_model[worker_id].conv2.bias.data = self.server_model.conv2.bias.data
-                self.workers_model[worker_id].fc1.weight.data = self.server_model.fc1.weight.data
-                self.workers_model[worker_id].fc1.bias.data = self.server_model.fc1.bias.data
-                self.workers_model[worker_id].fc2.weight.data = self.server_model.fc2.weight.data
-                self.workers_model[worker_id].fc2.bias.data = self.server_model.fc2.bias.data
-
+            if workers_update:
+                for worker_id in workers_to_be_used:
+                    self.workers_model[worker_id].conv1.weight.data = self.server_model.conv1.weight.data
+                    self.workers_model[worker_id].conv1.bias.data = self.server_model.conv1.bias.data
+                    self.workers_model[worker_id].conv2.weight.data = self.server_model.conv2.weight.data
+                    self.workers_model[worker_id].conv2.bias.data = self.server_model.conv2.bias.data
+                    self.workers_model[worker_id].fc1.weight.data = self.server_model.fc1.weight.data
+                    self.workers_model[worker_id].fc1.bias.data = self.server_model.fc1.bias.data
+                    self.workers_model[worker_id].fc2.weight.data = self.server_model.fc2.weight.data
+                    self.workers_model[worker_id].fc2.bias.data = self.server_model.fc2.bias.data
+    
+    
     def create_server_model(self):
         logging.info("Creating a model for the server...")
         self.server_model = FLNet().to(self.device)

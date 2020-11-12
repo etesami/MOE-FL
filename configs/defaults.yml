@@ -3,20 +3,22 @@ runtime:
     # rounds_num: 2
     lr: 0.01
     alpha: 0
-    batch_size: 50
-    test_batch_size: 20
     momentum: 0.5
+    batch_size: 20
+    server_w0_batch_size: 50
+    test_batch_size: 20
     mnist_workers_num: 30
-    public_data_percentage: 30
-    mnist_data_percentage: 30
-    train_workers_num: 3383  # Total number of users which participate in training in each round (Total: 3383)
+    public_data_percentage: 30 # Portion of data that will be shared with the server
+    mnist_data_percentage: 30 # Out of 100, how much of data is imported
+    mnist_eavesdropper_num: 5
+    # train_workers_num: 3383  # Total number of users which participate in training in each round (Total: 3383)
     random_seed: 12345
     save_model: False
     model_path: "/home/ubuntu/FederatedLearning/data/"
 data:
     MNIST_PATH: "/home/ubuntu/data/MNIST"
-    EMNIST_PATH: "/home/ubuntu/EMNIST/"
-    FEMNIST_PATH: "/home/ubuntu/leaf/data/femnist/data"
+    EMNIST_PATH: "/home/ubuntu/data/EMNIST/"
+    FEMNIST_PATH: "/home/ubuntu/leaf_non_iid/data/femnist/data"
     EMNIST_GOOGLE_PATH: "/home/ubuntu/data/fed_google"
 log:
     level: INFO

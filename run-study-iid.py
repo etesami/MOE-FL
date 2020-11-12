@@ -1,6 +1,7 @@
 """
 Usage: 
-    run-study-iid.py\n\t\t--epoch=<epoch-num>\n\t\t--round=<round-num>\n\t\t(--avg | --opt)
+    run-study-iid.py\n\t\t(--avg | --opt)\n\t\t--no-attack --output-prefix=NAME [--log] [--nep-log]
+    run-study-iid.py\n\t\t(--avg | --opt)\n\t\t--attack=ATTACK-TYPE --output-prefix=NAME [--log] [--nep-log]
 """
 from docopt import docopt
 import logging
@@ -20,10 +21,12 @@ CONFIG_PATH = 'configs/defaults.yml'
 ############ TEMPORARILY ################
 # arguments = dict()
 arguments['--reg'] = 0.0
-arguments['--output-prefix'] = "mnist_no_attack"
+arguments['--epoch'] = 5 
+arguments['--round'] = 100 
+# arguments['--output-prefix'] = "mnist_attack_2_opt"
 arguments['--server_model'] = "data_output/20201108_225254_mnist_w0/models/server_model_49"
-arguments['--local-log'] = "True"
-arguments['--neptune-log'] = "True"
+# arguments['--local-log'] = "True"
+# arguments['--neptune-log'] = "True"
 ############ TEMPORARILY ################
 
 
@@ -36,19 +39,14 @@ if __name__ == '__main__':
     epochs_num = int(arguments["--epoch"])
     rounds_num = int(arguments["--round"])
 
-    log_enable = True if arguments['--local-log'] == "True" or \
-        arguments['--local-log'] == "true" else False
+    log_enable = True if arguments['--log'] else False
     
     output_dir = None
     if log_enable:
         output_dir = utils.make_output_dir(
             configs['log']['root_output_dir'], arguments['--output-prefix'])
                 
-    neptune_enable = True if arguments['--neptune-log'] == "True" or \
-        arguments['--neptune-log'] == "true" else False
-
-    # From config file
-    train_workers_num = configs['runtime']['train_workers_num']
+    neptune_enable = True if arguments['--nep-log'] else False
 
     fl = FederatedLearning(
         configs['runtime']['batch_size'], 
@@ -77,24 +75,42 @@ if __name__ == '__main__':
             configs['data']['MNIST_PATH'], 
             configs['runtime']['mnist_data_percentage']))
     train_dataset = utils.get_mnist_dataset(train_raw_dataset)
-    # train_dataloader = utils.get_mnist_dataloader(
+    # train_dataloader = utils.get_dataloader(
     #     train_raw_dataset, configs['runtime']['batch_size'])
 
     test_data = utils.load_mnist_data_test(configs['data']['MNIST_PATH'])
     test_dataset = utils.get_mnist_dataset(test_data)
-    test_dataloader = utils.get_mnist_dataloader(
+    test_dataloader = utils.get_dataloader(
         test_dataset, configs['runtime']['test_batch_size'], shuffle=True)
     
     # Federated dataset is not used here. There is no server training
     trained_server_model = load(arguments['--server_model'])
-    # server_dataset = utils.get_server_dataset(
+    # server_dataset = utils.get_server_mnist_dataset(
     #     train_dataloader, configs['runtime']['public_data_percentage'])
     # federated_server_dataloader = fl.create_federated_mnist(
     #     server_dataset, ["server"], configs['runtime']['batch_size'], shuffle=False)
 
-    federated_train_dataloader = fl.create_federated_mnist(
-        train_dataset, workers_idx, configs['runtime']['batch_size'], shuffle=False)
-
+    federated_train_dataloader = None
+    if arguments["--no-attack"]:
+        logging.info("No Attack will be performed.")
+        federated_train_dataloader = fl.create_federated_mnist(
+            train_dataset, workers_idx, configs['runtime']['batch_size'], shuffle=False)
+    else:
+        logging.info("Perform attack type: {}".format(arguments["--attack"]))
+        eavesdroppers_idx = utils.get_eavesdroppers_idx(len(workers_idx), configs['runtime']['mnist_eavesdropper_num'])
+        if log_enable:
+            file = open(output_dir + "eavesdroppers", "a")
+            file.write('{}'.format(eavesdroppers_idx))
+            file.close()
+        federated_train_dataloader = fl.create_federated_mnist(
+            utils.perfrom_attack(
+                train_dataset, 
+                int(arguments["--attack"]), 
+                len(workers_idx), 
+                eavesdroppers_idx, 
+                100), 
+            workers_idx, configs['runtime']['batch_size'], shuffle=False)
+        
     for round_no in range(rounds_num):
         fl.train_workers(federated_train_dataloader, workers_idx, round_no, epochs_num)
         
@@ -107,11 +123,15 @@ if __name__ == '__main__':
             wieghts = fl.find_best_weights(trained_server_model, workers_idx)
             mode = "OPT"
         
+        fl.save_workers_model(workers_idx, str(round_no))
+
         # Update the server model
         fl.update_models(
             configs['runtime']['alpha'],
             wieghts, 
-            workers_idx)
+            workers_idx,
+            workers_update=True,
+            server_update=True)
 
         # Apply the server model to the test dataset
         fl.test(fl.server_model, test_dataloader, round_no)
@@ -119,7 +139,6 @@ if __name__ == '__main__':
         fl.save_model(
             fl.server_model, 
             "{}_{}".format("server_model", round_no))
-        fl.save_workers_model(workers_idx, str(round_no))
 
         print("")
     

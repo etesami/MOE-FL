@@ -3,13 +3,16 @@ import yaml
 import idx2numpy
 import numpy as np
 import logging
+import json
+import h5py
 from os import mkdir
+from random import sample
 from time import strftime
 from math import floor
 from collections import defaultdict
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from torch import tensor, cat, float32, int64
+from torch import tensor, cat, float32, int64, randperm, unique
 from federated_learning.FLCustomDataset import FLCustomDataset
 
 def load_config(configPath):
@@ -39,11 +42,95 @@ def make_output_dir(root_dir, output_prefix):
     return output_dir
 
 
+################ Leaf related functions #################
+
+def read_raw_data(data_path):
+    logging.debug("Reading raw data from {}".format(data_path))
+    groups = []
+    data = defaultdict(lambda : None)
+
+    files = os.listdir(data_path)
+    files = [f for f in files if f.endswith('.json')]
+    
+    for f in files:
+        file_path = os.path.join(data_path, f)
+        with open(file_path, 'r') as inf:
+            cdata = json.load(inf)
+        data.update(cdata['user_data'])
+
+    return data
+
+
+def preprocess_leaf_data(data_raw, min_num_samples=100, only_digits=True):
+    processed_data = dict()
+    for user, user_data in data_raw.items():  
+        data_y = np.array(user_data['y'], dtype = np.int64).reshape(-1 , 1)
+        filtered_idx = None
+        if only_digits:
+            filtered_idx = np.where(data_y < 10)[0]
+        else:
+            filtered_idx = np.where(data_y)[0]
+        if len(filtered_idx) < min_num_samples:
+            continue
+        data_x = np.array(user_data['x'], dtype = np.float32).reshape(-1 , 28, 28)
+        processed_data[user] = dict()
+        processed_data[user]['x'] = data_x[filtered_idx]
+        processed_data[user]['y'] = data_y[filtered_idx]
+    return processed_data
+
+
+def load_leaf_train(data_dir):
+    logging.info("Loading train dataset from {}".format(data_dir))
+    return read_raw_data(data_dir + "/train")
+
+
+def load_leaf_test(data_dir):
+    logging.info("Loading test dataset from {}".format(data_dir))
+    return read_raw_data(data_dir + "/test")
+
+
+################ MNIST related functions #################
+
+def get_server_mnist_dataset(dataset, workers_num, percentage):
+    """ 
+    Args:
+        dataset (FLCustomDataset): 
+        workers_num (int): Total number of workers
+        percentage (float): Out of 100
+    Returns:
+        (FLCustomDataset)
+    """  
+    logging.info("Creating server MNIST data loader.")
+    # Create a temporary DataLoader with adjusted batch_size according to the number of workers.
+    # Each batch is supposed to be assigned to a worker. 
+    # We just take out a percentage of each batch and save it for the server
+
+    batch_size = int(len(dataset) / workers_num)
+    tmp_dataloader = get_dataloader(dataset, batch_size, shuffle=False)
+    
+    server_dataset = dict()
+    server_dataset['x'] = tensor([], dtype=float32).reshape(0, 1, 28, 28)
+    server_dataset['y'] = tensor([], dtype=int64)
+
+    for batch_idx, (data, target) in enumerate(tmp_dataloader):
+        # if batch_idx % 100 == 0:
+        #     logging.info('{:.2f}% Loaded...'.format(round((batch_idx * 100) / len(dataloader), 2)))
+        server_dataset['x'] = cat((server_dataset['x'], data[:floor(len(data) * (percentage / 100.0))]))
+        server_dataset['y'] = cat((server_dataset['y'], target[:floor(len(target) * (percentage / 100.0))]))
+        logging.debug("Taking {} out of {} from worker {}, Total: [{}]".format(
+            floor(len(data) * (percentage / 100.0)), 
+            len(data), 
+            batch_idx,
+            server_dataset['y'].shape))
+    
+    return FLCustomDataset(server_dataset['x'], server_dataset['y'])
+
+
 def load_mnist_data_train(data_dir, percentage):
     """ 
     Args:
         data_dir (str): 
-        percentage (float): Out of 100, how much oof data is imported
+        percentage (float): Out of 100, how much of data is imported
     Returns:
         
     """  
@@ -92,36 +179,6 @@ def preprocess_mnist(dataset):
     return dataset
 
 
-def get_server_dataset(dataloader, percentage):
-    """ 
-    Args:
-        dataloader (torch.Dataloader): 
-        percentage (float): Out of 100
-    Returns:
-        (FLCustomDataset)
-    """  
-    logging.info("Creating server MNIST data loader.")
-    # Each batch is supposed to be assigned to a worker. 
-    # We just take out a percentage of each batch and save it for the server
-    batch_size = None
-    server_dataset = dict()
-    server_dataset['x'] = tensor([], dtype = float32).reshape(0, 1, 28, 28)
-    server_dataset['y'] = tensor([], dtype = int64)
-    
-    for batch_idx, (data, target) in enumerate(dataloader):
-        batch_size = len(data) if batch_size is None else batch_size
-        if batch_idx % 100 == 0:
-            logging.info('{:.2f}% Loaded...'.format(round((batch_idx * 100) / len(dataloader), 2)))
-        server_dataset['x'] = cat((server_dataset['x'], data[:floor(len(data) * (percentage / 100.0))]))
-        server_dataset['y'] = cat((server_dataset['y'], target[:floor(len(target) * (percentage / 100.0))]))
-        logging.debug("Selecting {} out of {}, Total: [{}]".format(
-            floor(len(data) * (percentage / 100.0)), 
-            len(data), 
-            server_dataset['y'].shape))
-    
-    return FLCustomDataset(server_dataset['x'], server_dataset['y'])
-
-
 def get_mnist_dataset(raw_dataset):
     """ 
     Args:
@@ -139,7 +196,7 @@ def get_mnist_dataset(raw_dataset):
     )
 
 
-def get_mnist_dataloader(dataset, batch_size, shuffle):
+def get_dataloader(dataset, batch_size, shuffle):
     """ 
     Args:
         dataset (FLCustomDataset): 
@@ -147,7 +204,116 @@ def get_mnist_dataloader(dataset, batch_size, shuffle):
     Returns:
         
     """    
-    logging.info("Creating MNIST data loader.")
+    logging.info("Creating data loader.")
     return DataLoader(
         dataset,
         batch_size=batch_size , shuffle=shuffle)
+
+
+def get_eavesdroppers_idx(workers_num, eavesdroppers_num):
+    idx = sample(range(workers_num), eavesdroppers_num)
+    logging.info("Eacesdroppers: {}".format(idx))
+    return idx
+
+
+def perfrom_attack(dataset, attack_id, workers_num, evasdropers_idx, percentage=100):
+    """ 
+    Args:
+        dataset (FLCustomDataset): 
+        attack_id (int):
+            1: shuffle
+            2: negative_value
+            3: labels
+        workers_num (int): number of all workers
+        evasdropers_idx (list(int))
+        percentage (int): Amount of data affected in each eavesdropper
+    Returns:
+        dataset (FLCustomDataset)
+    """  
+    batch_size = int(len(dataset) / workers_num)
+    tmp_dataloader = get_dataloader(dataset, batch_size, shuffle=False)
+    data_x = tensor([], dtype=float32).reshape(0, 1, 28, 28)
+    data_y = tensor([], dtype=int64)
+    for idx, (data, target) in enumerate(tmp_dataloader):
+        if idx in evasdropers_idx:
+            if attack_id == 1:
+                logging.debug("Performing attack [shuffle pixels] for user {}...".format(idx))
+                data = attack_shuffle_pixels(data)
+            elif attack_id == 2:
+                logging.debug("Performing attack [negative of pixels] for user {}...".format(idx))
+                data = attack_negative_pixels(data)
+            elif attack_id == 3:
+                logging.debug("Performing attack [shuffle labels] for user {}...".format(idx))
+                data = attack_shuffle_labels(target, percentage)
+        data_x = cat((data_x, data))
+        data_y = cat((data_y, target))
+        
+    return FLCustomDataset(data_x, data_y)
+
+
+def attack_shuffle_pixels(data):
+    for ii in range(len(data)):
+        pixels_flatted = data[ii].reshape(-1)
+        rand_idx = randperm(len(pixels_flatted))
+        pixels_flatted = pixels_flatted[rand_idx]
+        data[ii] = pixels_flatted.reshape(-1, 28, 28)
+    return data
+
+def attack_negative_pixels(data):
+    for ii in range(len(data)):
+        pixels_flatted = data[ii].reshape(-1)
+        rand_idx = randperm(len(pixels_flatted))
+        pixels_flatted = pixels_flatted[rand_idx]
+        data[ii] = pixels_flatted.reshape(-1, 28, 28)
+    return data
+
+def attack_shuffle_labels(targets, percentage):
+    num_categories = unique(targets)
+    percentage = 50
+    idx1 = np.array(sample(
+        range(len(num_categories)), 
+        int(percentage * 0.01 * len(num_categories))), dtype=np.int64)
+    idx2 = np.random.permutation(idx1)
+
+    target_map = dict()
+    for ii in range(len(idx1)):
+        target_map[idx1[ii]] = tensor(idx2[ii])
+
+    logging.debug("Target map for attack: suffle labels:\n".format(target_map))
+    logging.debug("target labels before: {}...".format(targets[:10]))
+    for ii in range(len(targets)):
+        if targets[ii].item() in target_map.keys():
+            target[ii] = target_map[targets[ii].item()]
+    logging.debug("target labels after: {}...".format(targets[:10]))
+    return targets
+
+################ EMNIST (google) related functions #################
+
+def load_femnist_google_data_digits(file_path):
+    logging.debug("Reading femnist (google) raw data for {}".format(file_path))
+    groups = []
+    data = defaultdict(lambda : None)
+    with h5py.File(file_path, "r") as h5_file:
+        for gname, group in h5_file.items():
+            # gname: example
+            for dname, ds in group.items():
+                # dname: f0000_14
+                data_ = []
+                for a, b in ds.items():
+                    # a: label, b: list(int)
+                    # a: pixels, b: list(list(int))
+                    data_.append(b[()])
+                data[dname] = {'x' : data_[1], 'y' : data_[0]}
+    return data
+
+
+def load_femnist_google_test(data_dir):
+    file_name = "fed_emnist_digitsonly_test.h5"
+    full_path = "{}/{}".format(data_dir, file_name)
+    return load_femnist_google_data_digits(full_path)
+
+
+def load_femnist_google_train(data_dir):
+    file_name = "fed_emnist_digitsonly_train.h5"
+    full_path = "{}/{}".format(data_dir, file_name)
+    return load_femnist_google_data_digits(full_path)
