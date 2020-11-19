@@ -60,41 +60,44 @@ if __name__ == '__main__':
     fl.create_server()
     fl.create_server_model()
 
-    train_raw_dataset = utils.preprocess_mnist(
-        utils.load_mnist_data_train(
-            configs['data']['MNIST_PATH'], 
-            configs['runtime']['mnist_data_percentage']))
-    train_dataset = utils.get_mnist_dataset(train_raw_dataset)
-    # train_dataloader = utils.get_dataloader(
-    #     train_dataset, configs['runtime']['batch_size'], shuffle=True)
 
-    test_data = utils.load_mnist_data_test(configs['data']['MNIST_PATH'])
-    test_dataset = utils.get_mnist_dataset(test_data)
-    test_dataloader = utils.get_dataloader(
-        test_dataset, configs['runtime']['test_batch_size'], shuffle=True)
-    
-    if arguments["--not-pure"]:
-        # Performing attack on the dataset before sending to the server
-        logging.info("Performing attack on the dataset before sending to the server")
-        train_dataset = utils.perfrom_attack(
-            train_dataset, 
-            int(arguments["--attack"]), 
-            configs['runtime']['mnist_eavesdropper_num'], 
-            configs['runtime']['mnist_workers_num'], 
-            100)
+    raw_data = utils.preprocess_leaf_data(
+        utils.load_leaf_train(configs['data']['FEMNIST_PATH']),
+        min_num_samples=100,only_digits=True)
 
-    server_dataset = utils.get_server_mnist_dataset(
-        train_dataset, 
-        configs['runtime']['mnist_workers_num'],
-        configs['runtime']['public_data_percentage'])
+
+    logging.info("Select data from only {} workers to be used...".format(configs['runtime']['femnist_total_users_num']))
+    workers_idx = list(raw_data.keys())[:configs['runtime']['femnist_total_users_num']]
+    logging.info(len(workers_idx))
+
+    server_train_images, server_train_labels = fl.create_server_femnist_dataset(
+        raw_data, workers_idx, configs['runtime']['public_data_percentage'])
+    server_federated_train_dataloader = fl.create_federated_server_leaf_dataloader(
+        server_train_images, server_train_labels, configs['runtime']['server_w0_batch_size'], True)
+
+    test_raw_data = utils.preprocess_leaf_data(
+        utils.load_leaf_test(configs['data']['FEMNIST_PATH']),
+        min_num_samples=0,only_digits=True)
+    server_test_images, server_test_labels = fl.create_server_femnist_dataset(
+        test_raw_data, workers_idx, 100)
+
+    server_test_dataloader = fl.create_federated_server_leaf_dataloader(
+        server_test_images, server_test_labels, configs['runtime']['test_batch_size'], True)
     
-    federated_server_dataloader = fl.create_federated_mnist(
-        server_dataset, ["server"], configs['runtime']['server_w0_batch_size'], shuffle=False)
+    # if arguments["--not-pure"]:
+    #     # Performing attack on the dataset before sending to the server
+    #     logging.info("Performing attack on the dataset before sending to the server")
+    #     train_dataset = utils.perfrom_attack(
+    #         train_dataset, 
+    #         int(arguments["--attack"]), 
+    #         configs['runtime']['mnist_eavesdropper_num'], 
+    #         configs['runtime']['mnist_workers_num'], 
+    #         100)
 
     for round_no in range(rounds_num):
-        fl.train_server(federated_server_dataloader, round_no, epochs_num)
+        fl.train_server(server_federated_train_dataloader, round_no, epochs_num)
         # Apply the server model to the test dataset
-        fl.test(fl.server_model, test_dataloader, round_no)
+        fl.test(fl.server_model, server_federated_test_dataloader, round_no)
         fl.save_model(
             fl.server_model, 
             "{}_{}".format("server_model", round_no))

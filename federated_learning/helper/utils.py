@@ -6,7 +6,7 @@ import logging
 import json
 import h5py
 from os import mkdir
-from random import sample
+from random import sample, choice
 from time import strftime
 from math import floor
 from collections import defaultdict
@@ -35,11 +35,33 @@ def load_config(configPath):
     return configs
 
 
+def write_to_file(output_dir, file_name, content):
+    full_path = "{}/{}".format(output_dir, file_name)
+    with open(full_path, "w") as f:
+        f.write("{}".format(content))
+    f.close
+
+def save_configs(output_dir, configs):
+    full_path = "{}/configs".format(output_dir)
+    with open(full_path, "w") as f:
+        yaml.dump(configs, f, default_flow_style=False)
+    f.close
+
+
 def make_output_dir(root_dir, output_prefix):
     output_dir = "{}/{}_{}/".format(root_dir, strftime("%Y%m%d_%H%M%S"), output_prefix)
     logging.info("Creating the output direcotry as {}.".format(output_dir))
     mkdir(output_dir)
     return output_dir
+
+
+def get_workers_idx(population, num, excluded_idx):
+    idx = []
+    while len(idx) < num:
+        idx_random = choice(population)
+        if idx_random not in (excluded_idx + idx):
+            idx.append(idx_random)
+    return idx
 
 
 ################ Leaf related functions #################
@@ -52,16 +74,20 @@ def read_raw_data(data_path):
     files = os.listdir(data_path)
     files = [f for f in files if f.endswith('.json')]
     
+    counter = 1
     for f in files:
+        logging.info("Loading {} out of {} files...".format(counter, len(files)))
         file_path = os.path.join(data_path, f)
         with open(file_path, 'r') as inf:
             cdata = json.load(inf)
         data.update(cdata['user_data'])
+        counter += 1
 
     return data
 
 
 def preprocess_leaf_data(data_raw, min_num_samples=100, only_digits=True):
+    logging.info("Start processing of femnist data...")
     processed_data = dict()
     for user, user_data in data_raw.items():  
         data_y = np.array(user_data['y'], dtype = np.int64).reshape(-1 , 1)
@@ -106,7 +132,7 @@ def get_server_mnist_dataset(dataset, workers_num, percentage):
     # We just take out a percentage of each batch and save it for the server
 
     batch_size = int(len(dataset) / workers_num)
-    tmp_dataloader = get_dataloader(dataset, batch_size, shuffle=False)
+    tmp_dataloader = get_dataloader(dataset, batch_size, shuffle=False, drop_last=True)
     
     server_dataset = dict()
     server_dataset['x'] = tensor([], dtype=float32).reshape(0, 1, 28, 28)
@@ -141,6 +167,7 @@ def load_mnist_data_train(data_dir, percentage):
     
     # Save only some percentage of data
     train_data['x'] = train_data['x'][:int((float(percentage) / 100.0) * len(train_data['x']))]
+    logging.debug("Train data loaded: {}".format(len(train_data['x'])))
     
     file_path = "/train-labels-idx1-ubyte"
     train_data['y'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.int64)
@@ -196,7 +223,7 @@ def get_mnist_dataset(raw_dataset):
     )
 
 
-def get_dataloader(dataset, batch_size, shuffle):
+def get_dataloader(dataset, batch_size, shuffle, drop_last):
     """ 
     Args:
         dataset (FLCustomDataset): 
@@ -207,16 +234,10 @@ def get_dataloader(dataset, batch_size, shuffle):
     logging.info("Creating data loader.")
     return DataLoader(
         dataset,
-        batch_size=batch_size , shuffle=shuffle)
+        batch_size=batch_size , shuffle=shuffle, drop_last=drop_last)
 
 
-def get_eavesdroppers_idx(workers_num, eavesdroppers_num):
-    idx = sample(range(workers_num), eavesdroppers_num)
-    logging.info("Eacesdroppers: {}".format(idx))
-    return idx
-
-
-def perfrom_attack(dataset, attack_id, workers_num, evasdropers_idx, percentage=100):
+def perfrom_attack(dataset, attack_id, workers_idx, evasdropers_idx, percentage=100):
     """ 
     Args:
         dataset (FLCustomDataset): 
@@ -224,18 +245,22 @@ def perfrom_attack(dataset, attack_id, workers_num, evasdropers_idx, percentage=
             1: shuffle
             2: negative_value
             3: labels
-        workers_num (int): number of all workers
+        
         evasdropers_idx (list(int))
         percentage (int): Amount of data affected in each eavesdropper
     Returns:
         dataset (FLCustomDataset)
     """  
-    batch_size = int(len(dataset) / workers_num)
-    tmp_dataloader = get_dataloader(dataset, batch_size, shuffle=False)
+    batch_size = int(len(dataset) / len(workers_idx))
+    logging.debug("Batch size for {} workers: {}".format(len(workers_idx), batch_size))
+    logging.info("Create a temporaily dataloader...")
+    tmp_dataloader = get_dataloader(dataset, batch_size, shuffle=False, drop_last=True)
     data_x = tensor([], dtype=float32).reshape(0, 1, 28, 28)
     data_y = tensor([], dtype=int64)
+    logging.debug("Attack ID: {}".format(attack_id))
     for idx, (data, target) in enumerate(tmp_dataloader):
-        if idx in evasdropers_idx:
+        if workers_idx[idx] in evasdropers_idx:
+            logging.debug("Find target [{}] for the attack.".format(idx))
             if attack_id == 1:
                 logging.debug("Performing attack [shuffle pixels] for user {}...".format(idx))
                 data = attack_shuffle_pixels(data)
@@ -245,6 +270,8 @@ def perfrom_attack(dataset, attack_id, workers_num, evasdropers_idx, percentage=
             elif attack_id == 3:
                 logging.debug("Performing attack [shuffle labels] for user {}...".format(idx))
                 data = attack_shuffle_labels(target, percentage)
+            else:
+                logging.debug("NOT EXPECTED: NO VALID ATTACK ID!")
         data_x = cat((data_x, data))
         data_y = cat((data_y, target))
         

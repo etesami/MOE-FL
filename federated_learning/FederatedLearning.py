@@ -1,17 +1,17 @@
 import torch
 import h5py
-import torch.nn.functional as F
-import torch.optim as optim
-from torchvision import datasets, transforms
+import logging
+import os
+import math
+import json
 import syft as sy
 import cvxpy as cp
 import numpy as np
-import logging
-import os
-import random
-import math
-import json
+from random import sample
 from collections import defaultdict
+from torch.nn import functional as F
+from torch import optim, float32, int64, tensor
+from torchvision import datasets, transforms
 from federated_learning.FLCustomDataset import FLCustomDataset
 from federated_learning.FLNet import FLNet
 import neptune
@@ -26,7 +26,6 @@ class FederatedLearning():
         logging.info("Initializing Federated Learning class...")
 
         self.workers = dict()
-        self.workers_id = []
         self.workers_model = dict()
         self.server = None
         self.server_model = None
@@ -71,6 +70,21 @@ class FederatedLearning():
         logging.info("Creating the server...")
         self.server = sy.VirtualWorker(self.hook, id="server")
 
+
+    def create_server_model(self):
+        logging.info("Creating a model for the server...")
+        self.server_model = FLNet().to(self.device)
+
+
+    def create_workers_model(self, selected_workers_id):
+        logging.info("Creating a model for {} worker(s)...".format(len(selected_workers_id)))
+        for worker_id in selected_workers_id:
+            if worker_id not in self.workers_model:
+                logging.debug("Creating a model for worker {}".format(worker_id))
+                self.workers_model[worker_id] = FLNet().to(self.device)
+            else:
+                logging.debug("The model for worker {} exists".format(worker_id))
+
     
     def create_federated_mnist(self, dataset, destination_idx, batch_size, shuffle):
         """ 
@@ -91,112 +105,176 @@ class FederatedLearning():
         fed_dataloader = sy.FederatedDataLoader(
             dataset.federate(workers),
             batch_size=batch_size, 
-            shuffle=shuffle)
+            shuffle=shuffle,
+            drop_last=True)
 
         return fed_dataloader
 
 
-    # def load_emnist_data_training_binary(self):
-    #     file_path = "/emnist-digits-train-images-idx3-ubyte"
-    #     train_images = idx2numpy.convert_from_file(self.data_path + file_path)
+    # def read_raw_data(self, data_path, get_workers = False):
+    #     logging.debug("Reading raw data")
+    #     workers_id = []
+    #     groups = []
+    #     data = defaultdict(lambda : None)
+
+    #     files = os.listdir(data_path)
+    #     files = [f for f in files if f.endswith('.json')]
         
-    #     file_path = "/emnist-digits-train-labels-idx1-ubyte"
-    #     train_labels = idx2numpy.convert_from_file(self.data_path + file_path)
-        
-    #     train_images, train_labels = train_images.copy(), train_labels.copy()
-    #     return train_images, train_labels
+    #     for f in files:
+    #         file_path = os.path.join(data_path, f)
+    #         with open(file_path, 'r') as inf:
+    #             cdata = json.load(inf)
+    #         data.update(cdata['user_data'])
+    #         if get_workers:
+    #             workers_id.extend(cdata['users'])
+
+    #     if get_workers:
+    #         workers_id = list(sorted(data.keys()))
+
+    #     return workers_id, data
 
 
-    # def load_emnist_data_training(self):
-    #     mndata = MNIST(self.data_path + '/digits')
-    #     logging.info("Loading the EMNIST dataset")
-    #     train_images, train_labels = mndata.load_training()
-    #     self.train_images = np.asarray(train_images, dtype=np.uint8).reshape(-1, 28, 28)
-    #     self.train_labels = np.asarray(train_labels)
-
-    #     indices = np.arange(self.train_images.shape[0])
-    #     np.random.shuffle(indices)
-    #     self.train_images = self.train_images[indices]
-    #     self.train_labels = self.train_labels[indices]
+    # def load_femnist_train(self, data_dir):
+    #     logging.info("Loading train dataset")
+    #     self.workers_id, self.train_data = self.read_raw_data(data_dir + "/train", get_workers = True)
 
 
-    def read_raw_data(self, data_path, get_workers = False):
-        logging.debug("Reading raw data")
-        workers_id = []
-        groups = []
-        data = defaultdict(lambda : None)
+    # def load_femnist_test(self, data_dir):
+    #     logging.info("Loading test dataset")
+    #     _, self.test_data = self.read_raw_data(data_dir + "/test", get_workers = False)
+    
 
-        files = os.listdir(data_path)
-        files = [f for f in files if f.endswith('.json')]
-        
-        for f in files:
-            file_path = os.path.join(data_path, f)
-            with open(file_path, 'r') as inf:
-                cdata = json.load(inf)
-            data.update(cdata['user_data'])
-            if get_workers:
-                workers_id.extend(cdata['users'])
+    def load_federated_femnist_train_datasets(self, raw_data, workers_idx):
+        """ 
 
-        if get_workers:
-            workers_id = list(sorted(data.keys()))
-
-        return workers_id, data
-
-
-    def load_femnist_train(self, data_dir):
-        logging.info("Loading train dataset")
-        self.workers_id, self.train_data = self.read_raw_data(data_dir + "/train", get_workers = True)
-
-
-    def load_femnist_test(self, data_dir):
-        logging.info("Loading test dataset")
-        _, self.test_data = self.read_raw_data(data_dir + "/test", get_workers = False)
-
-
-    def create_datasets(self, selected_workers_id):
-        logging.info("Creating federated dataset for selected {} workers...".format(len(selected_workers_id)))
-        
+        Args:
+            raw_data (dict of str): dict contains train and test data categorized based on user id
+                # raw_data['f0_12345']['x'], raw_data['f0_12345']['y'] 
+        Returns:
+        """    
+        logging.info("Creating federated dataset for {} workers...".format(len(workers_idx)))
         train_datasets = []
-        test_data_images = torch.Tensor()
-        test_data_labels = torch.Tensor()
+        test_data_images = tensor([], dtype=float32)
+        test_data_labels = tensor([], dtype=int64)
 
-        for worker_id in selected_workers_id:
-            worker_record_num = len(self.train_data[worker_id]['y'])
+        for worker_id in workers_idx:
 
-            logging.debug("Worker {} has {} records".format(worker_id, worker_record_num))
-            train_images = torch.Tensor(np.array(self.train_data[worker_id]['x'], dtype = np.single).reshape(-1, 1, 28, 28))
-            train_labels = torch.Tensor(np.array(self.train_data[worker_id]['y'], dtype = np.single))
-            logging.debug("Number of training data for user {} is {}".format(worker_id, len(train_labels)))
+            worker_record_num = len(raw_data[worker_id]['y'])
+            train_images = tensor(raw_data[worker_id]['x'], dtype=float32).reshape(-1, 1, 28, 28)
+            train_labels = tensor(raw_data[worker_id]['y'], dtype=int64)
 
             # transform=transforms.Compose([transforms.ToTensor()])
             train_dataset = sy.BaseDataset(train_images, train_labels)\
                 .send(self.workers[worker_id])
             train_datasets.append(train_dataset)
 
-            logging.debug("Number of training data in the BaseDataset class is {}".format(len(train_dataset.targets)))
-
-            test_images = torch.Tensor(np.array(self.test_data[worker_id]['x'], dtype = np.single).reshape(-1 , 1, 28, 28))
-            test_labels = torch.Tensor(np.array(self.test_data[worker_id]['y'], dtype = np.single))
-            logging.debug("Number of testing data for user {} is {}".format(worker_id, len(test_labels)))
+            test_images = tensor(raw_data[worker_id]['x'], dtype=float32).reshape(-1 , 1, 28, 28)
+            test_labels = tensor(raw_data[worker_id]['y'], dtype=int64)
 
             test_data_images = torch.cat((test_data_images, test_images))
             test_data_labels = torch.cat((test_data_labels, test_labels))
 
-        train_dataset_loader = sy.FederatedDataLoader(
-            sy.FederatedDataset(train_datasets), batch_size = self.batch_size, shuffle=False, drop_last = True, **self.kwargs)
+        train_dataloader = sy.FederatedDataLoader(
+            sy.FederatedDataset(train_datasets), batch_size = self.batch_size, shuffle=False, drop_last = False, **self.kwargs)
 
-        logging.info("Length of Federated Dataset (Total number of records for all workers): {}".format(len(train_dataset_loader.federated_dataset)))
+        logging.info("Length of Federated Dataset (Total number of records for all workers): {}".format(
+            len(train_dataloader.federated_dataset)))
         
         test_dataset = sy.BaseDataset(test_data_images, test_data_labels)
-        logging.info("Lenght of targets for test: {}".format(len(test_data_labels)))
+        logging.info("Lenght of targets for test dataset: {}".format(len(test_data_labels)))
         logging.debug("Length of the test dataset (Basedataset): {}".format(len(test_dataset)))
 
-        test_dataset_loader = torch.utils.data.DataLoader(
+        test_dataloader = torch.utils.data.DataLoader(
             test_dataset, batch_size=self.test_batch_size, shuffle=True, drop_last = False, **self.kwargs)
         
-        logging.debug("Length of the test data loader (datasets): {}".format(len(test_dataset_loader.dataset)))
+        logging.debug("Length of the test data loader (datasets): {}".format(len(test_dataloader.dataset)))
 
-        return train_dataset_loader, test_dataset_loader
+        return train_dataloader, test_dataloader
+
+
+    def create_server_femnist_dataset(self, raw_data, workers_idx, percentage):
+        """ 
+        Args:
+            raw_data (dict): 
+            workers_idx (list(int)): 
+            percentage (float): Out of 100, amount of public data of each user
+        Returns:
+        """  
+        logging.info("Creating the server data from {} selected users...".format(len(workers_idx)))
+        # Fraction of public data of each user, which be shared by the server
+        server_images = np.array([], dtype = np.float32).reshape(-1, 28, 28)
+        server_labels = np.array([], dtype = np.int64).reshape(0, 1)
+        for worker_id in workers_idx:
+            worker_samples_num = len(raw_data[worker_id]['y'])
+            num_samples_for_server = math.floor((percentage / 100.0) * worker_samples_num)
+            logging.debug("Sending {} samples from worker {} with total {}".format(
+                num_samples_for_server, worker_id, worker_samples_num))
+            indices = sample(range(worker_samples_num), num_samples_for_server)
+            
+            images = np.array([raw_data[worker_id]['x'][i] for i in indices], dtype = np.float32).reshape(-1, 28, 28)
+            labels = np.array([raw_data[worker_id]['y'][i] for i in indices], dtype = np.int64)
+            server_images = np.concatenate((server_images, images))
+            server_labels = np.concatenate((server_labels, labels))
+
+        logging.info("Selected {} samples in total for the server from {} users.".format(server_images.shape, len(workers_idx)))
+        return server_images, server_labels
+
+
+    def create_federated_server_leaf_dataloader(self, train_images, train_labels, batch_size, shuffle):
+        logging.info("Creating federated server dataloader...")
+        aggregated_dataset = sy.BaseDataset(
+            tensor(train_images.reshape(-1, 1, 28, 28), dtype=float32),
+            tensor(train_labels.reshape(-1), dtype=int64))
+        
+        return sy.FederatedDataLoader(
+            aggregated_dataset.federate([self.server]), 
+            batch_size = batch_size, shuffle = shuffle, drop_last = False, **self.kwargs)
+
+
+    # def create_datasets(self, selected_workers_id):
+    #     logging.info("Creating federated dataset for selected {} workers...".format(len(selected_workers_id)))
+        
+    #     train_datasets = []
+    #     test_data_images = torch.Tensor()
+    #     test_data_labels = torch.Tensor()
+
+    #     for worker_id in selected_workers_id:
+    #         worker_record_num = len(self.train_data[worker_id]['y'])
+
+    #         logging.debug("Worker {} has {} records".format(worker_id, worker_record_num))
+    #         train_images = torch.Tensor(np.array(self.train_data[worker_id]['x'], dtype = np.single).reshape(-1, 1, 28, 28))
+    #         train_labels = torch.Tensor(np.array(self.train_data[worker_id]['y'], dtype = np.single))
+    #         logging.debug("Number of training data for user {} is {}".format(worker_id, len(train_labels)))
+
+    #         # transform=transforms.Compose([transforms.ToTensor()])
+    #         train_dataset = sy.BaseDataset(train_images, train_labels)\
+    #             .send(self.workers[worker_id])
+    #         train_datasets.append(train_dataset)
+
+    #         logging.debug("Number of training data in the BaseDataset class is {}".format(len(train_dataset.targets)))
+
+    #         test_images = torch.Tensor(np.array(self.test_data[worker_id]['x'], dtype = np.single).reshape(-1 , 1, 28, 28))
+    #         test_labels = torch.Tensor(np.array(self.test_data[worker_id]['y'], dtype = np.single))
+    #         logging.debug("Number of testing data for user {} is {}".format(worker_id, len(test_labels)))
+
+    #         test_data_images = torch.cat((test_data_images, test_images))
+    #         test_data_labels = torch.cat((test_data_labels, test_labels))
+
+    #     train_dataset_loader = sy.FederatedDataLoader(
+    #         sy.FederatedDataset(train_datasets), batch_size = self.batch_size, shuffle=False, drop_last = True, **self.kwargs)
+
+    #     logging.info("Length of Federated Dataset (Total number of records for all workers): {}".format(len(train_dataset_loader.federated_dataset)))
+        
+    #     test_dataset = sy.BaseDataset(test_data_images, test_data_labels)
+    #     logging.info("Lenght of targets for test: {}".format(len(test_data_labels)))
+    #     logging.debug("Length of the test dataset (Basedataset): {}".format(len(test_dataset)))
+
+    #     test_dataset_loader = torch.utils.data.DataLoader(
+    #         test_dataset, batch_size=self.test_batch_size, shuffle=True, drop_last = False, **self.kwargs)
+        
+    #     logging.debug("Length of the test data loader (datasets): {}".format(len(test_dataset_loader.dataset)))
+
+    #     return train_dataset_loader, test_dataset_loader
         
 
     # # Create aggregation in server from all users.
@@ -215,7 +293,7 @@ class FederatedLearning():
     #             num_samples_for_server, worker_id, worker_samples_count
     #         ))
     #         total_samples_count = total_samples_count + num_samples_for_server
-    #         indices = random.sample(range(worker_samples_count), num_samples_for_server)
+    #         indices = sample(range(worker_samples_count), num_samples_for_server)
             
     #         images = np.array([self.train_data[worker_id]['x'][i] for i in indices], dtype = np.single).reshape(-1, 28, 28)
     #         labels = np.array([self.train_data[worker_id]['y'][i] for i in indices], dtype = np.single)
@@ -238,43 +316,43 @@ class FederatedLearning():
     #     return aggregated_dataloader
 
 
-    # Create aggregation in server from all users.
-    def create_aggregated_data(self, workers_id_list):
-        logging.info("Creating the aggregated data for the server from {} selected users...".format(len(workers_id_list)))
-        # Fraction of public data of each user, which be shared by the server
-        aggregated_image = np.array([], dtype = np.single).reshape(-1, 28, 28)
-        aggregated_label = np.array([], dtype = np.single)
-        fraction = 0.2 
-        total_samples_count = 0
-        for worker_id in workers_id_list:
-            worker_samples_count = len(self.train_data[worker_id]['y'])
+    # # Create aggregation in server from all users.
+    # def create_aggregated_data(self, workers_id_list):
+    #     logging.info("Creating the aggregated data for the server from {} selected users...".format(len(workers_id_list)))
+    #     # Fraction of public data of each user, which be shared by the server
+    #     aggregated_image = np.array([], dtype = np.single).reshape(-1, 28, 28)
+    #     aggregated_label = np.array([], dtype = np.single)
+    #     fraction = 0.2 
+    #     total_samples_count = 0
+    #     for worker_id in workers_id_list:
+    #         worker_samples_count = len(self.train_data[worker_id]['y'])
             
-            num_samples_for_server = math.floor(fraction * len(self.train_data[worker_id]['y']))
-            logging.debug("Sending {} from client {} with total {}".format(
-                num_samples_for_server, worker_id, worker_samples_count
-            ))
-            total_samples_count = total_samples_count + num_samples_for_server
-            indices = random.sample(range(worker_samples_count), num_samples_for_server)
+    #         num_samples_for_server = math.floor(fraction * len(self.train_data[worker_id]['y']))
+    #         logging.debug("Sending {} from client {} with total {}".format(
+    #             num_samples_for_server, worker_id, worker_samples_count
+    #         ))
+    #         total_samples_count = total_samples_count + num_samples_for_server
+    #         indices = sample(range(worker_samples_count), num_samples_for_server)
             
-            images = np.array([self.train_data[worker_id]['x'][i] for i in indices], dtype = np.single).reshape(-1, 28, 28)
-            labels = np.array([self.train_data[worker_id]['y'][i] for i in indices], dtype = np.single)
-            aggregated_image = np.concatenate((aggregated_image, images))
-            aggregated_label = np.concatenate((aggregated_label, labels))
+    #         images = np.array([self.train_data[worker_id]['x'][i] for i in indices], dtype = np.single).reshape(-1, 28, 28)
+    #         labels = np.array([self.train_data[worker_id]['y'][i] for i in indices], dtype = np.single)
+    #         aggregated_image = np.concatenate((aggregated_image, images))
+    #         aggregated_label = np.concatenate((aggregated_label, labels))
 
-        logging.info("Selected {} samples in total for the server from all users.".format(total_samples_count))
-        logging.debug("Aggregated train images shape: {}, dtype: {}".format(
-            aggregated_image.shape, aggregated_image.dtype))
-        logging.debug("Aggregated train images label: {}, dtype: {}".format(
-            aggregated_label.shape, aggregated_label.dtype))
+    #     logging.info("Selected {} samples in total for the server from all users.".format(total_samples_count))
+    #     logging.debug("Aggregated train images shape: {}, dtype: {}".format(
+    #         aggregated_image.shape, aggregated_image.dtype))
+    #     logging.debug("Aggregated train images label: {}, dtype: {}".format(
+    #         aggregated_label.shape, aggregated_label.dtype))
 
-        aggregated_dataset = sy.BaseDataset(torch.Tensor(aggregated_image),\
-            torch.Tensor(aggregated_label), \
-            transform=transforms.Compose([transforms.ToTensor()]))
+    #     aggregated_dataset = sy.BaseDataset(torch.Tensor(aggregated_image),\
+    #         torch.Tensor(aggregated_label), \
+    #         transform=transforms.Compose([transforms.ToTensor()]))
         
-        aggregated_dataloader = sy.FederatedDataLoader(
-            aggregated_dataset.federate([self.server]), batch_size = self.batch_size, shuffle = True, drop_last = True, **self.kwargs)
+    #     aggregated_dataloader = sy.FederatedDataLoader(
+    #         aggregated_dataset.federate([self.server]), batch_size = self.batch_size, shuffle = True, drop_last = True, **self.kwargs)
 
-        return aggregated_dataloader
+    #     return aggregated_dataloader
 
 
     def send_model(self, model, location, location_id):
@@ -307,13 +385,13 @@ class FederatedLearning():
         # Find labels which are going to be permuted base on the value of the percentage
         labels_to_be_changed = None
         if 20 <= data_percentage and data_percentage < 40:
-            labels_to_be_changed = np.array(random.sample(range(10), 2))
+            labels_to_be_changed = np.array(sample(range(10), 2))
         elif 40 <= data_percentage and data_percentage < 60:
-            labels_to_be_changed = np.array(random.sample(range(10), 4))
+            labels_to_be_changed = np.array(sample(range(10), 4))
         elif 60 <= data_percentage and data_percentage < 80:
-            labels_to_be_changed = np.array(random.sample(range(10), 6))
+            labels_to_be_changed = np.array(sample(range(10), 6))
         elif 80 <= data_percentage and data_percentage < 100:
-            labels_to_be_changed = np.array(random.sample(range(10), 8))
+            labels_to_be_changed = np.array(sample(range(10), 8))
         elif data_percentage == 100:
             labels_to_be_changed = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
         
@@ -338,12 +416,12 @@ class FederatedLearning():
     #     return selected_workers_id
         
 
-    def get_subset_of_workers(self, workers_percentage):
-        NUM_MAL_WORKERS = round(workers_percentage * len(self.workers_id) / 100.0)
-        selected_workers_idx = random.sample(range(len(self.workers_id)), NUM_MAL_WORKERS)
-        selected_workers_id = [self.workers_id[i] for i in selected_workers_idx]
-        logging.debug("Total selected workers: {}".format(len(selected_workers_id)))
-        return selected_workers_id
+    # def get_subset_of_workers(self, workers_percentage):
+    #     NUM_MAL_WORKERS = round(workers_percentage * len(self.workers_id) / 100.0)
+    #     selected_workers_idx = sample(range(len(self.workers_id)), NUM_MAL_WORKERS)
+    #     selected_workers_id = [self.workers_id[i] for i in selected_workers_idx]
+    #     logging.debug("Total selected workers: {}".format(len(selected_workers_id)))
+    #     return selected_workers_id
     
     # '''
     # Attack 1
@@ -558,6 +636,7 @@ class FederatedLearning():
 
 
     def save_workers_model(self, workers_idx, round_no):
+        self.getback_model(self.workers_model, workers_idx)
         logging.info("Saving models {}".format(workers_idx))
         for worker_id, worker_model in self.workers_model.items():
             if worker_id in workers_idx:
@@ -647,14 +726,8 @@ class FederatedLearning():
         # self.getback_model(self.server_model)
         with torch.no_grad():
             reference_layers = [None] * 8
-            reference_layers[0] = trained_model.conv1.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[1] = trained_model.conv1.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[2] = trained_model.conv2.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[3] = trained_model.conv2.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[4] = trained_model.fc1.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[5] = trained_model.fc1.bias.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[6] = trained_model.fc2.weight.data.numpy().copy().reshape(-1, 1).ravel()
-            reference_layers[7] = trained_model.fc2.bias.data.numpy().copy().reshape(-1, 1).ravel()
+            for layer_id, param_tensor in enumerate(trained_model.state_dict()):
+                reference_layers[layer_id] = trained_model.state_dict()[param_tensor].data.numpy().copy().reshape(-1, 1).ravel()
 
             workers_params = {}
             """
@@ -677,14 +750,9 @@ class FederatedLearning():
                 worker_model = self.workers_model[worker_id]
                 self.getback_model(worker_model)
                 workers_params[worker_id] = [[] for i in range(8)]
-                workers_params[worker_id][0] = worker_model.conv1.weight.data.numpy().copy().reshape(-1, 1)
-                workers_params[worker_id][1] = worker_model.conv1.bias.data.numpy().copy().reshape(-1, 1)
-                workers_params[worker_id][2] = worker_model.conv2.weight.data.numpy().copy().reshape(-1, 1)
-                workers_params[worker_id][3] = worker_model.conv2.bias.data.numpy().copy().reshape(-1, 1)
-                workers_params[worker_id][4] = worker_model.fc1.weight.data.numpy().copy().reshape(-1, 1)
-                workers_params[worker_id][5] = worker_model.fc1.bias.data.numpy().copy().reshape(-1, 1)
-                workers_params[worker_id][6] = worker_model.fc2.weight.data.numpy().copy().reshape(-1, 1)
-                workers_params[worker_id][7] = worker_model.fc2.bias.data.numpy().copy().reshape(-1, 1)
+
+                for layer_id, param_tensor in enumerate(worker_model.state_dict()):
+                    workers_params[worker_id][layer_id] = worker_model.state_dict()[param_tensor].data.numpy().copy().reshape(-1, 1)
 
             # logging.debug("workers_param shape: {}".format(len(workers_params)))
             # for key in workers_params:
@@ -703,14 +771,8 @@ class FederatedLearning():
 
             workers_all_params = []
             logging.info("Start the optimization....")
-            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][0].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][1].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][2].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][3].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][4].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][5].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][6].shape[0], 0))
-            workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][7].shape[0], 0))
+            for ii in range(7):
+                workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][ii].shape[0], 0))
 
             for worker_id, worker_model in workers_params.items():
                 workers_all_params[0] = np.concatenate((workers_all_params[0], workers_params[worker_id][0]), 1)
@@ -728,14 +790,18 @@ class FederatedLearning():
 
             W = cp.Variable(len(self.workers_model))
 
-            objective = cp.Minimize(cp.norm2(cp.matmul(workers_all_params[0], W) - reference_layers[0]) +
-                                    cp.norm2(cp.matmul(workers_all_params[1], W) - reference_layers[1]) +
-                                    cp.norm2(cp.matmul(workers_all_params[2], W) - reference_layers[2]) +
-                                    cp.norm2(cp.matmul(workers_all_params[3], W) - reference_layers[3]) +
-                                    cp.norm2(cp.matmul(workers_all_params[4], W) - reference_layers[4]) +
-                                    cp.norm2(cp.matmul(workers_all_params[5], W) - reference_layers[5]) +
-                                    cp.norm2(cp.matmul(workers_all_params[6], W) - reference_layers[6]) +
-                                    cp.norm2(cp.matmul(workers_all_params[7], W) - reference_layers[7]))
+            objective = cp.Minimize(
+                (1.0 / (len(self.workers_model) * len(self.workers_model))) *
+                   (cp.norm2(cp.matmul(workers_all_params[0], W) - reference_layers[0]) +
+                    cp.norm2(cp.matmul(workers_all_params[1], W) - reference_layers[1]) +
+                    cp.norm2(cp.matmul(workers_all_params[2], W) - reference_layers[2]) +
+                    cp.norm2(cp.matmul(workers_all_params[3], W) - reference_layers[3]) +
+                    cp.norm2(cp.matmul(workers_all_params[4], W) - reference_layers[4]) +
+                    cp.norm2(cp.matmul(workers_all_params[5], W) - reference_layers[5]) +
+                    cp.norm2(cp.matmul(workers_all_params[6], W) - reference_layers[6]) +
+                    cp.norm2(cp.matmul(workers_all_params[7], W) - reference_layers[7])
+                    )
+                )
 
             for i in range(len(workers_all_params)):
                 logging.debug("Mean [{}]: {}".format(i, np.round(np.mean(workers_all_params[i],0) - np.mean(reference_layers[i],0),6)))
@@ -754,7 +820,160 @@ class FederatedLearning():
             return W.value
 
 
-    def calculate_weighted_params(self, W, workers_idx):
+    def find_best_weights_from_trusted_idx(self, workers_idx, trusted_idx):
+        """
+
+        Args:
+            workers_idx (list[str])
+            trusted_idx (list[str])
+        """
+        self.getback_model(self.workers_model, workers_idx)
+        avg_model = self.get_average_model(trusted_idx)
+        with torch.no_grad():
+            reference_layers = [None] * 8
+            for layer_id, param in enumerate(avg_model.parameters()):
+                reference_layers[layer_id] = param.data.numpy().reshape(-1, 1).ravel()
+
+            workers_params = {}
+            # """
+            # --> conv1.weight
+            # workers_params['worker0'][0] =
+            #     convW0_11
+            #     convW0_12
+            #     convW0_21
+            #     convW0_22
+
+            # --> conv1.bias
+            # workers_params['worker0'][1] =
+            #     convW0_11
+            #     convW0_12
+            #     convW0_21
+            #     convW0_22
+            # """
+            workers_to_be_used = list(set(workers_idx) - set(trusted_idx))
+            for worker_id in workers_to_be_used:
+                worker_model = self.workers_model[worker_id]
+                self.getback_model(worker_model)
+                workers_params[worker_id] = [[] for i in range(8)]
+
+                for layer_id, param in enumerate(worker_model.parameters()):
+                    workers_params[worker_id][layer_id] = param.data.numpy().reshape(-1, 1)
+
+            # logging.debug("workers_param shape: {}".format(len(workers_params)))
+            # for key in workers_params:
+            #     logging.debug("workers_param[{}]: {}".format(key, len(workers_params[key])))
+            #     if key == "worker0":
+            #         for i in range(0, len(workers_params[key])):
+            #             logging.debug("workers_param[{}][{}]: {}".format(key, i, len(workers_params[key][i])))
+            """
+            --> conv1.weight
+            workers_all_params[0] =
+                [workers_param[worker0][0], workers_param[worker1][0], workers_param[worker2][0]]
+            --> conv1.bias
+            workers_all_params[1] =
+                [workers_param[worker0][1], workers_param[worker1][1], workers_param[worker2][1]]
+            """
+
+            workers_all_params = []
+            logging.info("Start the optimization....")
+            for ii in range(8):
+                workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][ii].shape[0], 0))
+                logging.debug("all_params: {}".format(workers_all_params[ii].shape))
+
+            for worker_id, worker_model in workers_params.items():
+                workers_all_params[0] = np.concatenate((workers_all_params[0], workers_params[worker_id][0]), 1)
+                workers_all_params[1] = np.concatenate((workers_all_params[1], workers_params[worker_id][1]), 1)
+                workers_all_params[2] = np.concatenate((workers_all_params[2], workers_params[worker_id][2]), 1)
+                workers_all_params[3] = np.concatenate((workers_all_params[3], workers_params[worker_id][3]), 1)
+                workers_all_params[4] = np.concatenate((workers_all_params[4], workers_params[worker_id][4]), 1)
+                workers_all_params[5] = np.concatenate((workers_all_params[5], workers_params[worker_id][5]), 1)
+                workers_all_params[6] = np.concatenate((workers_all_params[6], workers_params[worker_id][6]), 1)
+                workers_all_params[7] = np.concatenate((workers_all_params[7], workers_params[worker_id][7]), 1)
+
+            # logging.debug("workers_all_param: {}".format(len(workers_all_params)))
+            # for i in range(len(workers_all_params)):
+            #     logging.debug("workers_all_params[{}]: {}".format(i, workers_all_params[i].shape))
+
+            W = cp.Variable(len(workers_to_be_used))
+
+            objective = cp.Minimize(
+                    cp.norm2(cp.matmul(workers_all_params[0], W) - reference_layers[0]) +
+                    cp.norm2(cp.matmul(workers_all_params[1], W) - reference_layers[1]) +
+                    cp.norm2(cp.matmul(workers_all_params[2], W) - reference_layers[2]) +
+                    cp.norm2(cp.matmul(workers_all_params[3], W) - reference_layers[3]) +
+                    cp.norm2(cp.matmul(workers_all_params[4], W) - reference_layers[4]) +
+                    cp.norm2(cp.matmul(workers_all_params[5], W) - reference_layers[5]) +
+                    cp.norm2(cp.matmul(workers_all_params[6], W) - reference_layers[6]) +
+                    cp.norm2(cp.matmul(workers_all_params[7], W) - reference_layers[7])
+                )
+
+            for i in range(len(workers_all_params)):
+                logging.debug("Mean [{}]: {}".format(i, np.round(np.mean(workers_all_params[i],0) - np.mean(reference_layers[i],0),6)))
+                logging.debug("")
+
+            constraints = [0 <= W, W <= 1, sum(W) == 1]
+            prob = cp.Problem(objective, constraints)
+            result = prob.solve(solver=cp.MOSEK)
+            logging.info(W.value)
+            logging.info("")
+            if self.log_enable:
+                file = open(self.log_file_path + "opt_weights", "a")
+                TO_FILE = '{}\n'.format(np.array2string(W.value).replace('\n',''))
+                file.write(TO_FILE)
+                file.close()
+            return W.value
+
+
+    def get_average_model(self, workers_idx):
+        """ Find the average of all parameters of all layers of given workers. The average for each 
+            layer is stored as an element of a list.
+
+        Args:
+            workers_idx (list[str]): List of workers ids
+        Returns:
+            
+        """    
+        logging.info("Finding an average model for {} workers.".format(len(workers_idx)))
+        tmp_model = FLNet().to(self.device)            
+        self.getback_model(self.workers_model, workers_idx)
+
+        with torch.no_grad():
+            for id_, ww_id in enumerate(workers_idx):
+                worker_model = self.workers_model[ww_id]
+                if id_ == 0:
+                    tmp_model.conv1.weight.set_(worker_model.conv1.weight.data)
+                    tmp_model.conv1.bias.set_(worker_model.conv1.bias.data)
+                    tmp_model.conv2.weight.set_(worker_model.conv2.weight.data)
+                    tmp_model.conv2.bias.set_(worker_model.conv2.bias.data)
+                    tmp_model.fc1.weight.set_(worker_model.fc1.weight.data)
+                    tmp_model.fc1.bias.set_(worker_model.fc1.bias.data)
+                    tmp_model.fc2.weight.set_(worker_model.fc2.weight.data)
+                    tmp_model.fc2.bias.set_(worker_model.fc2.bias.data)
+                else:
+                    tmp_model.conv1.weight.set_(
+                        tmp_model.conv1.weight.data + worker_model.conv1.weight.data)
+                    tmp_model.conv1.bias.set_(
+                        tmp_model.conv1.bias.data + worker_model.conv1.bias.data)
+                    tmp_model.conv2.weight.set_(
+                        tmp_model.conv2.weight.data + worker_model.conv2.weight.data)
+                    tmp_model.conv2.bias.set_(
+                        tmp_model.conv2.bias.data + worker_model.conv2.bias.data)
+                    tmp_model.fc1.weight.set_(
+                        tmp_model.fc1.weight.data + worker_model.fc1.weight.data)
+                    tmp_model.fc1.bias.set_(
+                        tmp_model.fc1.bias.data + worker_model.fc1.bias.data)
+                    tmp_model.fc2.weight.set_(
+                        tmp_model.fc2.weight.data + worker_model.fc2.weight.data)
+                    tmp_model.fc2.bias.set_(
+                        tmp_model.fc2.bias.data + worker_model.fc2.bias.data)
+                
+        for param in tmp_model.parameters():
+            param.data = param.data / len(workers_idx)
+
+        return tmp_model
+        
+
+    def wieghted_avg_model(self, W, workers_idx):
         self.getback_model(self.workers_model, workers_idx)
         tmp_model = FLNet().to(self.device)
         with torch.no_grad():
@@ -767,8 +986,7 @@ class FederatedLearning():
             tmp_model.fc2.weight.data.fill_(0)
             tmp_model.fc2.bias.data.fill_(0)
 
-            counter = 0
-            for worker_id in workers_idx:
+            for counter, worker_id in enumerate(workers_idx):
                 worker_model = self.workers_model[worker_id]
                 tmp_model.conv1.weight.data = (
                         tmp_model.conv1.weight.data + W[counter] * worker_model.conv1.weight.data)
@@ -786,48 +1004,38 @@ class FederatedLearning():
                         tmp_model.fc2.weight.data + W[counter] * worker_model.fc2.weight.data)
                 tmp_model.fc2.bias.data = (
                         tmp_model.fc2.bias.data + W[counter] * worker_model.fc2.bias.data)
-                counter = counter + 1
+
         return tmp_model
     
     
-    def update_models(self, alpha, W, workers_to_be_used, workers_update=False, server_update=True):
-        self.getback_model(self.workers_model, workers_to_be_used)
+    def update_models(self, round_no, W, workers_idx, trusted_idx):
+        self.getback_model(self.workers_model, workers_idx)
         self.getback_model(self.server_model)
-
         with torch.no_grad():
-            tmp_model = self.calculate_weighted_params(W, workers_to_be_used)
+            tmp_model = self.wieghted_avg_model(W, list(set(workers_idx) - set(trusted_idx)))
+            avg_model = self.get_average_model(trusted_idx)
 
-            if server_update:
-                self.server_model.conv1.weight.data = alpha * self.server_model.conv1.weight.data + (1 - alpha) * tmp_model.conv1.weight.data
-                self.server_model.conv1.bias.data = alpha * self.server_model.conv1.bias.data + (1 - alpha) * tmp_model.conv1.bias.data
-                self.server_model.conv2.weight.data = alpha * self.server_model.conv2.weight.data + (1 - alpha) * tmp_model.conv2.weight.data
-                self.server_model.conv2.bias.data = alpha * self.server_model.conv2.bias.data + (1 - alpha) * tmp_model.conv2.bias.data
-                self.server_model.fc1.weight.data = alpha * self.server_model.fc1.weight.data + (1 - alpha) * tmp_model.fc1.weight.data
-                self.server_model.fc1.bias.data = alpha * self.server_model.fc1.bias.data + (1 - alpha) * tmp_model.fc1.bias.data
-                self.server_model.fc2.weight.data = alpha * self.server_model.fc2.weight.data + (1 - alpha) * tmp_model.fc2.weight.data
-                self.server_model.fc2.bias.data = alpha * self.server_model.fc2.bias.data + (1 - alpha) * tmp_model.fc2.bias.data
 
-            if workers_update:
-                for worker_id in workers_to_be_used:
-                    self.workers_model[worker_id].conv1.weight.data = self.server_model.conv1.weight.data
-                    self.workers_model[worker_id].conv1.bias.data = self.server_model.conv1.bias.data
-                    self.workers_model[worker_id].conv2.weight.data = self.server_model.conv2.weight.data
-                    self.workers_model[worker_id].conv2.bias.data = self.server_model.conv2.bias.data
-                    self.workers_model[worker_id].fc1.weight.data = self.server_model.fc1.weight.data
-                    self.workers_model[worker_id].fc1.bias.data = self.server_model.fc1.bias.data
-                    self.workers_model[worker_id].fc2.weight.data = self.server_model.fc2.weight.data
-                    self.workers_model[worker_id].fc2.bias.data = self.server_model.fc2.bias.data
+            # if server_update:
+            #     alpha = 0 if round_no == 0 else alpha
+            self.server_model.conv1.weight.data = (tmp_model.conv1.weight.data + avg_model.conv1.weight.data) / 2.0
+            self.server_model.conv1.bias.data = (tmp_model.conv1.bias.data + avg_model.conv1.bias.data) / 2.0
+            self.server_model.conv2.weight.data = (tmp_model.conv2.weight.data + avg_model.conv2.weight.data) / 2.0
+            self.server_model.conv2.bias.data = (tmp_model.conv2.bias.data + avg_model.conv2.bias.data) / 2.0
+            self.server_model.fc1.weight.data = (tmp_model.fc1.weight.data + avg_model.fc1.weight.data) / 2.0
+            self.server_model.fc1.bias.data = (tmp_model.fc1.bias.data + avg_model.fc1.bias.data) / 2.0
+            self.server_model.fc2.weight.data = (tmp_model.fc2.weight.data + avg_model.fc2.weight.data) / 2.0
+            self.server_model.fc2.bias.data = (tmp_model.fc2.bias.data + avg_model.fc2.bias.data) / 2.0
+
+            # if workers_update:
+            for worker_id in workers_idx:
+                self.workers_model[worker_id].conv1.weight.set_(self.server_model.conv1.weight.data)
+                self.workers_model[worker_id].conv1.bias.set_(self.server_model.conv1.bias.data)
+                self.workers_model[worker_id].conv2.weight.set_(self.server_model.conv2.weight.data)
+                self.workers_model[worker_id].conv2.bias.set_(self.server_model.conv2.bias.data)
+                self.workers_model[worker_id].fc1.weight.set_(self.server_model.fc1.weight.data)
+                self.workers_model[worker_id].fc1.bias.set_(self.server_model.fc1.bias.data)
+                self.workers_model[worker_id].fc2.weight.set_(self.server_model.fc2.weight.data)
+                self.workers_model[worker_id].fc2.bias.set_(self.server_model.fc2.bias.data)
     
     
-    def create_server_model(self):
-        logging.info("Creating a model for the server...")
-        self.server_model = FLNet().to(self.device)
-
-    def create_workers_model(self, selected_workers_id):
-        logging.info("Creating a model for {} worker(s)...".format(len(selected_workers_id)))
-        for worker_id in selected_workers_id:
-            if worker_id not in self.workers_model:
-                logging.debug("Creating a model for worker {}".format(worker_id))
-                self.workers_model[worker_id] = FLNet().to(self.device)
-            else:
-                logging.debug("The model for worker {} exists".format(worker_id))
