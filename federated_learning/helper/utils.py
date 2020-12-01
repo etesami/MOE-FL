@@ -219,7 +219,7 @@ def get_mnist_dataset(raw_dataset):
         raw_dataset['y'],
         transform=transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,))])
+            transforms.Normalize((raw_dataset['x'].mean(),), (raw_dataset['x'].std(),))])
     )
 
 

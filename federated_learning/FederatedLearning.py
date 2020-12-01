@@ -4,6 +4,7 @@ import logging
 import os
 import math
 import json
+import neptune
 import syft as sy
 import cvxpy as cp
 import numpy as np
@@ -12,9 +13,9 @@ from collections import defaultdict
 from torch.nn import functional as F
 from torch import optim, float32, int64, tensor
 from torchvision import datasets, transforms
+from sklearn.preprocessing import MinMaxScaler
 from federated_learning.FLCustomDataset import FLCustomDataset
 from federated_learning.FLNet import FLNet
-import neptune
 
 class FederatedLearning():
 
@@ -380,6 +381,7 @@ class FederatedLearning():
                         ww.get()
         elif model.location is not None:
             model.get()
+
 
     def get_labels_from_data_percentage(self, data_percentage):
         # Find labels which are going to be permuted base on the value of the percentage
@@ -922,6 +924,268 @@ class FederatedLearning():
                 file.write(TO_FILE)
                 file.close()
             return W.value
+
+
+    def normalize_weights(self, list_of_ids):
+        self.getback_model(self.workers_model, list_of_ids)
+        workers_params = {}
+        for worker_id in list_of_ids:
+            worker_model = self.server_model if worker_id == "server" else self.workers_model[worker_id]
+            self.getback_model(worker_model)
+
+            workers_params[worker_id] = [[] for i in range(8)]
+            for layer_id, param in enumerate(worker_model.parameters()):
+                workers_params[worker_id][layer_id] = param.data.numpy().reshape(-1, 1)
+
+        workers_all_params = []
+        for ii in range(8):
+            workers_all_params.append(np.array([]).reshape(workers_params[list_of_ids[0]][ii].shape[0], 0))
+            logging.debug("all_dparams: {}".format(workers_all_params[ii].shape))
+
+        for worker_id, worker_model in workers_params.items():
+            workers_all_params[0] = np.concatenate((workers_all_params[0], workers_params[worker_id][0]), 1)
+            workers_all_params[1] = np.concatenate((workers_all_params[1], workers_params[worker_id][1]), 1)
+            workers_all_params[2] = np.concatenate((workers_all_params[2], workers_params[worker_id][2]), 1)
+            workers_all_params[3] = np.concatenate((workers_all_params[3], workers_params[worker_id][3]), 1)
+            workers_all_params[4] = np.concatenate((workers_all_params[4], workers_params[worker_id][4]), 1)
+            workers_all_params[5] = np.concatenate((workers_all_params[5], workers_params[worker_id][5]), 1)
+            workers_all_params[6] = np.concatenate((workers_all_params[6], workers_params[worker_id][6]), 1)
+            workers_all_params[7] = np.concatenate((workers_all_params[7], workers_params[worker_id][7]), 1)
+
+        normalized_workers_all_params = []
+        for ii in range(len(workers_all_params)):
+            norm = MinMaxScaler().fit(workers_all_params[ii])
+            normalized_workers_all_params.append(norm.transform(workers_all_params[ii]))
+
+        return normalized_workers_all_params
+
+                
+    def get_average_param(self, all_params, indexes):
+        """ Find the average of all parameters of all layers of given workers
+        Args:
+        Returns:
+            
+        """    
+        logging.info("Finding an average model for {} workers.".format(len(indexes)))
+        avg_param = []
+        for ii in range(len(all_params)):
+            params = np.transpose(np.array([all_params[ii][:,i] for i in indexes]))
+            logging.debug("params[{}] shape: {}".format(ii, params.shape))
+            avg_param.append(params.mean(axis=1))
+            
+        return avg_param
+
+
+    def get_index_number(self, workers_idx, selected_idx):
+        positions = []
+        for ii, jj in enumerate(workers_idx):
+            if jj in selected_idx:
+                positions.append(ii)
+        return positions
+
+
+    def find_best_weights_from_trusted_idx_abs_normalization(self, workers_idx, trusted_idx):
+        """
+        Args:
+            workers_idx (list[str])
+            trusted_idx (list[str])
+        """
+        trusted_workers_position = self.get_index_number(workers_idx, trusted_idx)
+        all_params = self.normalize_weights(workers_idx)
+        """
+        len(all_params) = 8
+        all_params[0].shape = (num of elements in layer 0 of cnn, num of users)
+        all_params[1].shape = (num of elements in layer 1 of cnn, num of users)
+        """
+        avg_param = self.get_average_param(all_params, trusted_workers_position)
+        
+        # Not trusted users (i.e. Normal users + attackers)
+        workers_to_be_used = list(set(workers_idx) - set(trusted_idx))
+        workers_to_be_used_position = self.get_index_number(workers_idx, workers_to_be_used)
+
+        workers_all_params = []
+        for ii in range(len(all_params)):
+            workers_all_params.append(np.transpose(np.array([all_params[ii][:,i] for i in workers_to_be_used_position])))
+
+        W = cp.Variable(len(workers_to_be_used))
+
+        objective = cp.Minimize(
+                cp.norm2(cp.matmul(workers_all_params[0], W) - avg_param[0]) +
+                cp.norm2(cp.matmul(workers_all_params[1], W) - avg_param[1]) +
+                cp.norm2(cp.matmul(workers_all_params[2], W) - avg_param[2]) +
+                cp.norm2(cp.matmul(workers_all_params[3], W) - avg_param[3]) +
+                cp.norm2(cp.matmul(workers_all_params[4], W) - avg_param[4]) +
+                cp.norm2(cp.matmul(workers_all_params[5], W) - avg_param[5]) +
+                cp.norm2(cp.matmul(workers_all_params[6], W) - avg_param[6]) +
+                cp.norm2(cp.matmul(workers_all_params[7], W) - avg_param[7])
+            )
+
+        constraints = [0 <= W, W <= 1, sum(W) == 1]
+        prob = cp.Problem(objective, constraints)
+        result = prob.solve(solver=cp.MOSEK)
+        logging.info(W.value)
+        logging.info("")
+        if self.log_enable:
+            file = open(self.log_file_path + "opt_weights", "a")
+            TO_FILE = '{}\n'.format(np.array2string(W.value).replace('\n',''))
+            file.write(TO_FILE)
+            file.close()
+        return W.value
+
+
+    def find_best_weights_from_trusted_idx_normalized_last_layer(self, workers_idx, trusted_idx):
+        """
+        Args:
+            workers_idx (list[str])
+            trusted_idx (list[str])
+        """
+        trusted_workers_position = self.get_index_number(workers_idx, trusted_idx)
+        all_params = self.normalize_weights(workers_idx)
+        """
+        len(all_params) = 8
+        all_params[0].shape = (num of elements in layer 0 of cnn, num of users)
+        all_params[1].shape = (num of elements in layer 1 of cnn, num of users)
+        """
+        avg_param = self.get_average_param(all_params, trusted_workers_position)
+        
+        # Not trusted users (i.e. Normal users + attackers)
+        workers_to_be_used = list(set(workers_idx) - set(trusted_idx))
+        workers_to_be_used_position = self.get_index_number(workers_idx, workers_to_be_used)
+
+        workers_all_params = []
+        for ii in range(len(all_params)):
+            workers_all_params.append(np.transpose(np.array([all_params[ii][:,i] for i in workers_to_be_used_position])))
+
+        W = cp.Variable(len(workers_to_be_used))
+
+        objective = cp.Minimize(cp.norm2(cp.matmul(workers_all_params[7], W) - avg_param[7]))
+
+        constraints = [0 <= W, W <= 1, sum(W) == 1]
+        prob = cp.Problem(objective, constraints)
+        result = prob.solve(solver=cp.MOSEK)
+        logging.info(W.value)
+        logging.info("")
+        if self.log_enable:
+            file = open(self.log_file_path + "opt_weights", "a")
+            TO_FILE = '{}\n'.format(np.array2string(W.value).replace('\n',''))
+            file.write(TO_FILE)
+            file.close()
+        return W.value
+
+
+    def find_best_weights_from_trusted_idx_normalized_W_outside_last_layer(self, workers_idx, trusted_idx):
+        """
+        Args:
+            workers_idx (list[str])
+            trusted_idx (list[str])
+        """
+        trusted_workers_position = self.get_index_number(workers_idx, trusted_idx)
+        """
+            len(all_params) = 8
+            all_params[0].shape = (num of elements in layer 0 of cnn, num of users)
+            all_params[1].shape = (num of elements in layer 1 of cnn, num of users)`
+        """
+        all_params = self.normalize_weights(workers_idx)
+        """
+            avg_param[0].shape = (500,)
+            avg_param[1].shape = (20,)
+        """
+        avg_param = self.get_average_param(all_params, trusted_workers_position)
+        
+        # Not trusted users (i.e. Normal users + attackers)
+        workers_to_be_used = list(set(workers_idx) - set(trusted_idx))
+        workers_to_be_used_position = self.get_index_number(workers_idx, workers_to_be_used)
+
+        workers_all_params = []
+        for ii in range(len(all_params)):
+            workers_all_params.append(np.transpose(np.array([all_params[ii][:,i] for i in workers_to_be_used_position])))
+
+
+        reference_layer = []
+        for ii in range(len(avg_param)):
+            tmp = np.array([]).reshape(avg_param[ii].shape[0], 0)
+            for jj in range(len(workers_to_be_used)):
+                tmp = np.concatenate((tmp, avg_param[ii].reshape(avg_param[ii].shape[0], -1)), axis=1)
+            logging.info(tmp.shape)
+            reference_layer.append(tmp)
+
+        W = cp.Variable(len(workers_to_be_used))
+        objective = cp.Minimize(
+            cp.matmul(cp.norm2(workers_all_params[7] - reference_layer[7], axis=0), W)
+        )
+
+        constraints = [0 <= W, W <= 1, sum(W) == 1]
+        prob = cp.Problem(objective, constraints)
+        result = prob.solve(solver=cp.MOSEK)
+        logging.info(W.value)
+        logging.info("")
+        if self.log_enable:
+            file = open(self.log_file_path + "opt_weights", "a")
+            TO_FILE = '{}\n'.format(np.array2string(W.value).replace('\n',''))
+            file.write(TO_FILE)
+            file.close()
+        return W.value
+
+
+    def find_best_weights_from_trusted_idx_normalized_W_outside(self, workers_idx, trusted_idx):
+        """
+        Args:
+            workers_idx (list[str])
+            trusted_idx (list[str])
+        """
+        trusted_workers_position = self.get_index_number(workers_idx, trusted_idx)
+        """
+            len(all_params) = 8
+            all_params[0].shape = (num of elements in layer 0 of cnn, num of users)
+            all_params[1].shape = (num of elements in layer 1 of cnn, num of users)`
+        """
+        all_params = self.normalize_weights(workers_idx)
+        """
+            avg_param[0].shape = (500,)
+            avg_param[1].shape = (20,)
+        """
+        avg_param = self.get_average_param(all_params, trusted_workers_position)
+        
+        # Not trusted users (i.e. Normal users + attackers)
+        workers_to_be_used = list(set(workers_idx) - set(trusted_idx))
+        workers_to_be_used_position = self.get_index_number(workers_idx, workers_to_be_used)
+
+        workers_all_params = []
+        for ii in range(len(all_params)):
+            workers_all_params.append(np.transpose(np.array([all_params[ii][:,i] for i in workers_to_be_used_position])))
+
+
+        reference_layer = []
+        for ii in range(len(avg_param)):
+            tmp = np.array([]).reshape(avg_param[ii].shape[0], 0)
+            for jj in range(len(workers_to_be_used)):
+                tmp = np.concatenate((tmp, avg_param[ii].reshape(avg_param[ii].shape[0], -1)), axis=1)
+            logging.info(tmp.shape)
+            reference_layer.append(tmp)
+
+        W = cp.Variable(len(workers_to_be_used))
+        objective = cp.Minimize(
+            cp.matmul(cp.norm2(workers_all_params[0] - reference_layer[0], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[1] - reference_layer[1], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[2] - reference_layer[2], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[3] - reference_layer[3], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[4] - reference_layer[4], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[5] - reference_layer[5], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[6] - reference_layer[6], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[7] - reference_layer[7], axis=0), W)
+        )
+
+        constraints = [0 <= W, W <= 1, sum(W) == 1]
+        prob = cp.Problem(objective, constraints)
+        result = prob.solve(solver=cp.MOSEK)
+        logging.info(W.value)
+        logging.info("")
+        if self.log_enable:
+            file = open(self.log_file_path + "opt_weights", "a")
+            TO_FILE = '{}\n'.format(np.array2string(W.value).replace('\n',''))
+            file.write(TO_FILE)
+            file.close()
+        return W.value
 
 
     def get_average_model(self, workers_idx):

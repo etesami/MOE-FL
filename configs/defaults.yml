@@ -9,15 +9,15 @@ runtime:
     test_batch_size: 20
     public_data_percentage: 30 # Portion of data that will be shared with the server
     mnist_data_percentage: 30 # Out of 100, how much of data is imported
-    mnist_normal_users_num: 5 # Neither eavesdroppers nor trusted users
-    mnist_eavesdropper_num: 25 # Eavesdroppers
+    mnist_normal_users_num: 25 # Neither eavesdroppers nor trusted users
+    mnist_eavesdropper_num: 5 # Eavesdroppers
     mnist_trusted_users_num: 10 # Trusted
     # femnist_total_users_num: 50
     # femnist_train_users_num: 30
     # femnist_eavsdropper_num: 5
     random_seed: 12345
     save_model: False
-    model_path: "/home/ubuntu/FederatedLearning/data/"
+    W0_pure_path: "/home/ubuntu/FederatedLearning/data/"
 data:
     MNIST_PATH: "/home/ubuntu/data/MNIST"
     EMNIST_PATH: "/home/ubuntu/data/EMNIST/"

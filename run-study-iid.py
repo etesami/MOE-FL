@@ -27,7 +27,6 @@ if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', level=configs['log']['level'])
     seed(configs['runtime']['random_seed'])
 
-
     # Logging initialization
     log_enable = True if arguments['--log'] else False
     output_dir = None
@@ -99,8 +98,8 @@ if __name__ == '__main__':
     test_dataloader = utils.get_dataloader(
         test_dataset, configs['runtime']['test_batch_size'], shuffle=True, drop_last=False)
     
-    # Federated dataset is not used here. There is no server training
-    # trained_server_model = load(arguments['--server-model'])
+    # W0 model
+    # trained_server_model = load(configs['runtime']['W0_pure_path'])
 
     federated_train_dataloader = None
     if arguments["--no-attack"]:
@@ -128,7 +127,7 @@ if __name__ == '__main__':
             mode = "AVG"
         elif arguments['--opt']:
             # wieghts = fl.find_best_weights(trained_server_model, workers_idx)
-            wieghts = fl.find_best_weights_from_trusted_idx(workers_idx, trusted_idx)
+            wieghts = fl.find_best_weights_from_trusted_idx_normalized_W_outside_last_layer(workers_idx, trusted_idx)
             mode = "OPT"
         
         if log_enable:
