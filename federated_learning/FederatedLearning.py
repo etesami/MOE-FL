@@ -592,8 +592,6 @@ class FederatedLearning():
                         batch_idx * self.batch_size, 
                         len(server_dataloader) * self.batch_size,
                         100. * batch_idx / len(server_dataloader), loss.item()))
-        # if self.log_enable:
-        #     file.close()
         # Always need to get back the model
         self.getback_model(self.server_model)
         print()
@@ -722,104 +720,181 @@ class FederatedLearning():
     #         100. * correct / len(test_loader.dataset)))
 
 
-    def find_best_weights(self, trained_model, workers_to_be_used):
-        # reference_model = self.server_model
-        # workers_model = self.workers_model
-        # self.getback_model(self.server_model)
+    def wieghted_avg_model(self, W, workers_idx):
+        self.getback_model(self.workers_model, workers_idx)
+        tmp_model = FLNet().to(self.device)
         with torch.no_grad():
-            reference_layers = [None] * 8
-            for layer_id, param_tensor in enumerate(trained_model.state_dict()):
-                reference_layers[layer_id] = trained_model.state_dict()[param_tensor].data.numpy().copy().reshape(-1, 1).ravel()
+            tmp_model.conv1.weight.data.fill_(0)
+            tmp_model.conv1.bias.data.fill_(0)
+            tmp_model.conv2.weight.data.fill_(0)
+            tmp_model.conv2.bias.data.fill_(0)
+            tmp_model.fc1.weight.data.fill_(0)
+            tmp_model.fc1.bias.data.fill_(0)
+            tmp_model.fc2.weight.data.fill_(0)
+            tmp_model.fc2.bias.data.fill_(0)
 
-            workers_params = {}
-            """
-            --> conv1.weight
-            workers_params['worker0'][0] =
-                convW0_11
-                convW0_12
-                convW0_21
-                convW0_22
-
-            --> conv1.bias
-            workers_params['worker0'][1] =
-                convW0_11
-                convW0_12
-                convW0_21
-                convW0_22
-            """
-            for worker_id in workers_to_be_used:
-            # for worker_id, worker_model in self.workers_model.items():
+            for counter, worker_id in enumerate(workers_idx):
                 worker_model = self.workers_model[worker_id]
-                self.getback_model(worker_model)
-                workers_params[worker_id] = [[] for i in range(8)]
+                tmp_model.conv1.weight.data = (
+                        tmp_model.conv1.weight.data + W[counter] * worker_model.conv1.weight.data)
+                tmp_model.conv1.bias.data = (
+                        tmp_model.conv1.bias.data + W[counter] * worker_model.conv1.bias.data)
+                tmp_model.conv2.weight.data = (
+                        tmp_model.conv2.weight.data + W[counter] * worker_model.conv2.weight.data)
+                tmp_model.conv2.bias.data = (
+                        tmp_model.conv2.bias.data + W[counter] * worker_model.conv2.bias.data)
+                tmp_model.fc1.weight.data = (
+                        tmp_model.fc1.weight.data + W[counter] * worker_model.fc1.weight.data)
+                tmp_model.fc1.bias.data = (
+                        tmp_model.fc1.bias.data + W[counter] * worker_model.fc1.bias.data)
+                tmp_model.fc2.weight.data = (
+                        tmp_model.fc2.weight.data + W[counter] * worker_model.fc2.weight.data)
+                tmp_model.fc2.bias.data = (
+                        tmp_model.fc2.bias.data + W[counter] * worker_model.fc2.bias.data)
 
-                for layer_id, param_tensor in enumerate(worker_model.state_dict()):
-                    workers_params[worker_id][layer_id] = worker_model.state_dict()[param_tensor].data.numpy().copy().reshape(-1, 1)
+        return tmp_model
 
-            # logging.debug("workers_param shape: {}".format(len(workers_params)))
-            # for key in workers_params:
-            #     logging.debug("workers_param[{}]: {}".format(key, len(workers_params[key])))
-            #     if key == "worker0":
-            #         for i in range(0, len(workers_params[key])):
-            #             logging.debug("workers_param[{}][{}]: {}".format(key, i, len(workers_params[key][i])))
-            """
-            --> conv1.weight
-            workers_all_params[0] =
-                [workers_param[worker0][0], workers_param[worker1][0], workers_param[worker2][0]]
-            --> conv1.bias
-            workers_all_params[1] =
-                [workers_param[worker0][1], workers_param[worker1][1], workers_param[worker2][1]]
-            """
 
-            workers_all_params = []
-            logging.info("Start the optimization....")
-            for ii in range(7):
-                workers_all_params.append(np.array([]).reshape(workers_params[workers_to_be_used[0]][ii].shape[0], 0))
+    def update_models(self, workers_idx, weighted_avg_model):
+        self.getback_model(self.workers_model, workers_idx)
+        self.getback_model(weighted_avg_model)
+        with torch.no_grad():
+            # workers_update:
+            for worker_id in workers_idx:
+                self.workers_model[worker_id].conv1.weight.set_(weighted_avg_model.conv1.weight.data)
+                self.workers_model[worker_id].conv1.bias.set_(weighted_avg_model.conv1.bias.data)
+                self.workers_model[worker_id].conv2.weight.set_(weighted_avg_model.conv2.weight.data)
+                self.workers_model[worker_id].conv2.bias.set_(weighted_avg_model.conv2.bias.data)
+                self.workers_model[worker_id].fc1.weight.set_(weighted_avg_model.fc1.weight.data)
+                self.workers_model[worker_id].fc1.bias.set_(weighted_avg_model.fc1.bias.data)
+                self.workers_model[worker_id].fc2.weight.set_(weighted_avg_model.fc2.weight.data)
+                self.workers_model[worker_id].fc2.bias.set_(weighted_avg_model.fc2.bias.data)
 
-            for worker_id, worker_model in workers_params.items():
-                workers_all_params[0] = np.concatenate((workers_all_params[0], workers_params[worker_id][0]), 1)
-                workers_all_params[1] = np.concatenate((workers_all_params[1], workers_params[worker_id][1]), 1)
-                workers_all_params[2] = np.concatenate((workers_all_params[2], workers_params[worker_id][2]), 1)
-                workers_all_params[3] = np.concatenate((workers_all_params[3], workers_params[worker_id][3]), 1)
-                workers_all_params[4] = np.concatenate((workers_all_params[4], workers_params[worker_id][4]), 1)
-                workers_all_params[5] = np.concatenate((workers_all_params[5], workers_params[worker_id][5]), 1)
-                workers_all_params[6] = np.concatenate((workers_all_params[6], workers_params[worker_id][6]), 1)
-                workers_all_params[7] = np.concatenate((workers_all_params[7], workers_params[worker_id][7]), 1)
 
-            # logging.debug("workers_all_param: {}".format(len(workers_all_params)))
-            # for i in range(len(workers_all_params)):
-            #     logging.debug("workers_all_params[{}]: {}".format(i, workers_all_params[i].shape))
+    def normalize_weights(self, list_of_ids, **kwargs):
+        self.getback_model(self.workers_model, list_of_ids)
+        w0_model = None
+        for model_id in kwargs:
+            if model_id == "w0_model":
+                w0_model = kwargs[model_id]
 
-            W = cp.Variable(len(self.workers_model))
+        workers_params = {}
+        for worker_id in list_of_ids:
+            worker_model = self.workers_model[worker_id]
+            self.getback_model(worker_model)
 
-            objective = cp.Minimize(
-                (1.0 / (len(self.workers_model) * len(self.workers_model))) *
-                   (cp.norm2(cp.matmul(workers_all_params[0], W) - reference_layers[0]) +
-                    cp.norm2(cp.matmul(workers_all_params[1], W) - reference_layers[1]) +
-                    cp.norm2(cp.matmul(workers_all_params[2], W) - reference_layers[2]) +
-                    cp.norm2(cp.matmul(workers_all_params[3], W) - reference_layers[3]) +
-                    cp.norm2(cp.matmul(workers_all_params[4], W) - reference_layers[4]) +
-                    cp.norm2(cp.matmul(workers_all_params[5], W) - reference_layers[5]) +
-                    cp.norm2(cp.matmul(workers_all_params[6], W) - reference_layers[6]) +
-                    cp.norm2(cp.matmul(workers_all_params[7], W) - reference_layers[7])
-                    )
-                )
+            workers_params[worker_id] = [[] for i in range(8)]
+            for layer_id, param in enumerate(worker_model.parameters()):
+                workers_params[worker_id][layer_id] = param.data.numpy().reshape(-1, 1)
 
-            for i in range(len(workers_all_params)):
-                logging.debug("Mean [{}]: {}".format(i, np.round(np.mean(workers_all_params[i],0) - np.mean(reference_layers[i],0),6)))
-                logging.debug("")
+        if w0_model is not None:
+            workers_params['w0_model'] = [[] for i in range(8)]
+            for layer_id, param in enumerate(w0_model.parameters()):
+                workers_params['w0_model'][layer_id] = param.data.numpy().reshape(-1, 1)
 
-            constraints = [0 <= W, W <= 1, sum(W) == 1]
-            prob = cp.Problem(objective, constraints)
-            result = prob.solve(solver=cp.MOSEK)
-            logging.info(W.value)
-            logging.info("")
-            if self.log_enable:
-                file = open(self.log_file_path + "opt_weights", "a")
-                TO_FILE = '{}\n'.format(np.array2string(W.value).replace('\n',''))
-                file.write(TO_FILE)
-                file.close()
-            return W.value
+        workers_all_params = []
+        for ii in range(8):
+            workers_all_params.append(np.array([]).reshape(workers_params[list_of_ids[0]][ii].shape[0], 0))
+            logging.debug("all_dparams: {}".format(workers_all_params[ii].shape))
+
+        for worker_id, worker_model in workers_params.items():
+            workers_all_params[0] = np.concatenate((workers_all_params[0], workers_params[worker_id][0]), 1)
+            workers_all_params[1] = np.concatenate((workers_all_params[1], workers_params[worker_id][1]), 1)
+            workers_all_params[2] = np.concatenate((workers_all_params[2], workers_params[worker_id][2]), 1)
+            workers_all_params[3] = np.concatenate((workers_all_params[3], workers_params[worker_id][3]), 1)
+            workers_all_params[4] = np.concatenate((workers_all_params[4], workers_params[worker_id][4]), 1)
+            workers_all_params[5] = np.concatenate((workers_all_params[5], workers_params[worker_id][5]), 1)
+            workers_all_params[6] = np.concatenate((workers_all_params[6], workers_params[worker_id][6]), 1)
+            workers_all_params[7] = np.concatenate((workers_all_params[7], workers_params[worker_id][7]), 1)
+
+        normalized_workers_all_params = []
+        for ii in range(len(workers_all_params)):
+            norm = MinMaxScaler().fit(workers_all_params[ii])
+            normalized_workers_all_params.append(norm.transform(workers_all_params[ii]))
+
+        return normalized_workers_all_params
+
+
+    def find_best_weights(self, referenced_model, workers_to_be_used):
+
+        # last column of normalized_weights is corresponding to the w0_model:
+        normalized_weights = self.normalize_weights(workers_to_be_used, w0_model=referenced_model)
+
+        reference_layer = []
+        workers_all_params = []
+        for ii in range(len(normalized_weights)):
+            reference_layer.append(normalized_weights[ii][:,-1].reshape(-1, 1))
+            workers_all_params.append(normalized_weights[ii][:,:normalized_weights[ii].shape[1] - 1])
+
+        reference_layers = []
+        for ii in range(len(reference_layer)):
+            tmp = np.array([]).reshape(reference_layer[ii].shape[0], 0)
+            for jj in range(len(workers_to_be_used)):
+                tmp = np.concatenate((tmp, reference_layer[ii]), axis=1)
+            logging.info(tmp.shape)
+            reference_layers.append(tmp)
+
+        W = cp.Variable(len(self.workers_model))
+        objective = cp.Minimize(
+                cp.matmul(cp.norm2(workers_all_params[0] - reference_layers[0], axis=0), W) +
+                cp.matmul(cp.norm2(workers_all_params[1] - reference_layers[1], axis=0), W) +
+                cp.matmul(cp.norm2(workers_all_params[2] - reference_layers[2], axis=0), W) +
+                cp.matmul(cp.norm2(workers_all_params[3] - reference_layers[3], axis=0), W) +
+                cp.matmul(cp.norm2(workers_all_params[4] - reference_layers[4], axis=0), W) +
+                cp.matmul(cp.norm2(workers_all_params[5] - reference_layers[5], axis=0), W) +
+                cp.matmul(cp.norm2(workers_all_params[6] - reference_layers[6], axis=0), W) +
+                cp.matmul(cp.norm2(workers_all_params[7] - reference_layers[7], axis=0), W)
+            )
+
+        # for i in range(len(workers_all_params)):
+        #     logging.debug("Mean [{}]: {}".format(i, np.round(np.mean(workers_all_params[i],0) - np.mean(reference_layers[i],0),6)))
+        #     logging.debug("")
+
+        constraints = [0 <= W, W <= 1, sum(W) == 1]
+        prob = cp.Problem(objective, constraints)
+        result = prob.solve(solver=cp.MOSEK)
+        logging.info(W.value)
+        logging.info("")
+        if self.log_enable:
+            file = open(self.log_file_path + "opt_weights", "a")
+            TO_FILE = '{}\n'.format(np.array2string(W.value).replace('\n',''))
+            file.write(TO_FILE)
+            file.close()
+        return W.value
+
+
+########################################################################
+##################### Trusted Users ####################################
+
+    def update_models_trusted(self, round_no, W, workers_idx, trusted_idx):
+        self.getback_model(self.workers_model, workers_idx)
+        self.getback_model(self.server_model)
+        with torch.no_grad():
+            tmp_model = self.wieghted_avg_model(W, list(set(workers_idx) - set(trusted_idx)))
+            avg_model = self.get_average_model(trusted_idx)
+
+
+            # if server_update:
+            #     alpha = 0 if round_no == 0 else alpha
+            self.server_model.conv1.weight.data = (tmp_model.conv1.weight.data + avg_model.conv1.weight.data) / 2.0
+            self.server_model.conv1.bias.data = (tmp_model.conv1.bias.data + avg_model.conv1.bias.data) / 2.0
+            self.server_model.conv2.weight.data = (tmp_model.conv2.weight.data + avg_model.conv2.weight.data) / 2.0
+            self.server_model.conv2.bias.data = (tmp_model.conv2.bias.data + avg_model.conv2.bias.data) / 2.0
+            self.server_model.fc1.weight.data = (tmp_model.fc1.weight.data + avg_model.fc1.weight.data) / 2.0
+            self.server_model.fc1.bias.data = (tmp_model.fc1.bias.data + avg_model.fc1.bias.data) / 2.0
+            self.server_model.fc2.weight.data = (tmp_model.fc2.weight.data + avg_model.fc2.weight.data) / 2.0
+            self.server_model.fc2.bias.data = (tmp_model.fc2.bias.data + avg_model.fc2.bias.data) / 2.0
+
+            # if workers_update:
+            for worker_id in workers_idx:
+                self.workers_model[worker_id].conv1.weight.set_(self.server_model.conv1.weight.data)
+                self.workers_model[worker_id].conv1.bias.set_(self.server_model.conv1.bias.data)
+                self.workers_model[worker_id].conv2.weight.set_(self.server_model.conv2.weight.data)
+                self.workers_model[worker_id].conv2.bias.set_(self.server_model.conv2.bias.data)
+                self.workers_model[worker_id].fc1.weight.set_(self.server_model.fc1.weight.data)
+                self.workers_model[worker_id].fc1.bias.set_(self.server_model.fc1.bias.data)
+                self.workers_model[worker_id].fc2.weight.set_(self.server_model.fc2.weight.data)
+                self.workers_model[worker_id].fc2.bias.set_(self.server_model.fc2.bias.data)
 
 
     def find_best_weights_from_trusted_idx(self, workers_idx, trusted_idx):
@@ -924,40 +999,6 @@ class FederatedLearning():
                 file.write(TO_FILE)
                 file.close()
             return W.value
-
-
-    def normalize_weights(self, list_of_ids):
-        self.getback_model(self.workers_model, list_of_ids)
-        workers_params = {}
-        for worker_id in list_of_ids:
-            worker_model = self.server_model if worker_id == "server" else self.workers_model[worker_id]
-            self.getback_model(worker_model)
-
-            workers_params[worker_id] = [[] for i in range(8)]
-            for layer_id, param in enumerate(worker_model.parameters()):
-                workers_params[worker_id][layer_id] = param.data.numpy().reshape(-1, 1)
-
-        workers_all_params = []
-        for ii in range(8):
-            workers_all_params.append(np.array([]).reshape(workers_params[list_of_ids[0]][ii].shape[0], 0))
-            logging.debug("all_dparams: {}".format(workers_all_params[ii].shape))
-
-        for worker_id, worker_model in workers_params.items():
-            workers_all_params[0] = np.concatenate((workers_all_params[0], workers_params[worker_id][0]), 1)
-            workers_all_params[1] = np.concatenate((workers_all_params[1], workers_params[worker_id][1]), 1)
-            workers_all_params[2] = np.concatenate((workers_all_params[2], workers_params[worker_id][2]), 1)
-            workers_all_params[3] = np.concatenate((workers_all_params[3], workers_params[worker_id][3]), 1)
-            workers_all_params[4] = np.concatenate((workers_all_params[4], workers_params[worker_id][4]), 1)
-            workers_all_params[5] = np.concatenate((workers_all_params[5], workers_params[worker_id][5]), 1)
-            workers_all_params[6] = np.concatenate((workers_all_params[6], workers_params[worker_id][6]), 1)
-            workers_all_params[7] = np.concatenate((workers_all_params[7], workers_params[worker_id][7]), 1)
-
-        normalized_workers_all_params = []
-        for ii in range(len(workers_all_params)):
-            norm = MinMaxScaler().fit(workers_all_params[ii])
-            normalized_workers_all_params.append(norm.transform(workers_all_params[ii]))
-
-        return normalized_workers_all_params
 
                 
     def get_average_param(self, all_params, indexes):
@@ -1237,69 +1278,4 @@ class FederatedLearning():
         return tmp_model
         
 
-    def wieghted_avg_model(self, W, workers_idx):
-        self.getback_model(self.workers_model, workers_idx)
-        tmp_model = FLNet().to(self.device)
-        with torch.no_grad():
-            tmp_model.conv1.weight.data.fill_(0)
-            tmp_model.conv1.bias.data.fill_(0)
-            tmp_model.conv2.weight.data.fill_(0)
-            tmp_model.conv2.bias.data.fill_(0)
-            tmp_model.fc1.weight.data.fill_(0)
-            tmp_model.fc1.bias.data.fill_(0)
-            tmp_model.fc2.weight.data.fill_(0)
-            tmp_model.fc2.bias.data.fill_(0)
-
-            for counter, worker_id in enumerate(workers_idx):
-                worker_model = self.workers_model[worker_id]
-                tmp_model.conv1.weight.data = (
-                        tmp_model.conv1.weight.data + W[counter] * worker_model.conv1.weight.data)
-                tmp_model.conv1.bias.data = (
-                        tmp_model.conv1.bias.data + W[counter] * worker_model.conv1.bias.data)
-                tmp_model.conv2.weight.data = (
-                        tmp_model.conv2.weight.data + W[counter] * worker_model.conv2.weight.data)
-                tmp_model.conv2.bias.data = (
-                        tmp_model.conv2.bias.data + W[counter] * worker_model.conv2.bias.data)
-                tmp_model.fc1.weight.data = (
-                        tmp_model.fc1.weight.data + W[counter] * worker_model.fc1.weight.data)
-                tmp_model.fc1.bias.data = (
-                        tmp_model.fc1.bias.data + W[counter] * worker_model.fc1.bias.data)
-                tmp_model.fc2.weight.data = (
-                        tmp_model.fc2.weight.data + W[counter] * worker_model.fc2.weight.data)
-                tmp_model.fc2.bias.data = (
-                        tmp_model.fc2.bias.data + W[counter] * worker_model.fc2.bias.data)
-
-        return tmp_model
-    
-    
-    def update_models(self, round_no, W, workers_idx, trusted_idx):
-        self.getback_model(self.workers_model, workers_idx)
-        self.getback_model(self.server_model)
-        with torch.no_grad():
-            tmp_model = self.wieghted_avg_model(W, list(set(workers_idx) - set(trusted_idx)))
-            avg_model = self.get_average_model(trusted_idx)
-
-
-            # if server_update:
-            #     alpha = 0 if round_no == 0 else alpha
-            self.server_model.conv1.weight.data = (tmp_model.conv1.weight.data + avg_model.conv1.weight.data) / 2.0
-            self.server_model.conv1.bias.data = (tmp_model.conv1.bias.data + avg_model.conv1.bias.data) / 2.0
-            self.server_model.conv2.weight.data = (tmp_model.conv2.weight.data + avg_model.conv2.weight.data) / 2.0
-            self.server_model.conv2.bias.data = (tmp_model.conv2.bias.data + avg_model.conv2.bias.data) / 2.0
-            self.server_model.fc1.weight.data = (tmp_model.fc1.weight.data + avg_model.fc1.weight.data) / 2.0
-            self.server_model.fc1.bias.data = (tmp_model.fc1.bias.data + avg_model.fc1.bias.data) / 2.0
-            self.server_model.fc2.weight.data = (tmp_model.fc2.weight.data + avg_model.fc2.weight.data) / 2.0
-            self.server_model.fc2.bias.data = (tmp_model.fc2.bias.data + avg_model.fc2.bias.data) / 2.0
-
-            # if workers_update:
-            for worker_id in workers_idx:
-                self.workers_model[worker_id].conv1.weight.set_(self.server_model.conv1.weight.data)
-                self.workers_model[worker_id].conv1.bias.set_(self.server_model.conv1.bias.data)
-                self.workers_model[worker_id].conv2.weight.set_(self.server_model.conv2.weight.data)
-                self.workers_model[worker_id].conv2.bias.set_(self.server_model.conv2.bias.data)
-                self.workers_model[worker_id].fc1.weight.set_(self.server_model.fc1.weight.data)
-                self.workers_model[worker_id].fc1.bias.set_(self.server_model.fc1.bias.data)
-                self.workers_model[worker_id].fc2.weight.set_(self.server_model.fc2.weight.data)
-                self.workers_model[worker_id].fc2.bias.set_(self.server_model.fc2.bias.data)
-    
     

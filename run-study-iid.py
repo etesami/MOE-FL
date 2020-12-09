@@ -61,29 +61,29 @@ if __name__ == '__main__':
     
     total_num_workers = \
         configs['runtime']['mnist_normal_users_num'] + \
-        configs['runtime']['mnist_eavesdropper_num'] + \
-        configs['runtime']['mnist_trusted_users_num']
+        configs['runtime']['mnist_eavesdropper_num'] 
+        # configs['runtime']['mnist_trusted_users_num']
 
     workers_idx = ["worker_" + str(i) for i in range(total_num_workers)]
     fl.create_workers(workers_idx)
     fl.create_workers_model(workers_idx)
 
-    trusted_idx = utils.get_workers_idx(
-        range(total_num_workers), configs['runtime']['mnist_trusted_users_num'], [])
+    # trusted_idx = utils.get_workers_idx(
+    #     range(total_num_workers), configs['runtime']['mnist_trusted_users_num'], [])
     eavesdroppers_idx = utils.get_workers_idx(
-        range(total_num_workers), configs['runtime']['mnist_eavesdropper_num'], trusted_idx)
+        range(total_num_workers), configs['runtime']['mnist_eavesdropper_num'], [])
     normal_idx = utils.get_workers_idx(
-        range(total_num_workers), configs['runtime']['mnist_normal_users_num'], trusted_idx + eavesdroppers_idx)
+        range(total_num_workers), configs['runtime']['mnist_normal_users_num'], eavesdroppers_idx)
 
-    trusted_idx = [workers_idx[ii] for ii in trusted_idx]
+    # trusted_idx = [workers_idx[ii] for ii in trusted_idx]
     eavesdroppers_idx = [workers_idx[ii] for ii in eavesdroppers_idx]
     normal_idx = [workers_idx[ii] for ii in normal_idx]
 
-    logging.info("Trusted: {}".format(trusted_idx))
+    # logging.info("Trusted: {}".format(trusted_idx))
     logging.info("Eavesdroppers: {}".format(eavesdroppers_idx))
     logging.info("Normal: {}".format(normal_idx))
     if log_enable:
-        utils.write_to_file(output_dir, "trusted", trusted_idx)
+        # utils.write_to_file(output_dir, "trusted", trusted_idx)
         utils.write_to_file(output_dir, "eavesdroppers", eavesdroppers_idx)
         utils.write_to_file(output_dir, "normal", normal_idx)
 
@@ -99,7 +99,7 @@ if __name__ == '__main__':
         test_dataset, configs['runtime']['test_batch_size'], shuffle=True, drop_last=False)
     
     # W0 model
-    # trained_server_model = load(configs['runtime']['W0_pure_path'])
+    trained_w0_model = load(configs['runtime']['W0_pure_path'])
 
     federated_train_dataloader = None
     if arguments["--no-attack"]:
@@ -121,36 +121,31 @@ if __name__ == '__main__':
         fl.train_workers(federated_train_dataloader, workers_idx, round_no, epochs_num)
         
         # Find the best weights and update the server model
-        wieghts, mode = None, None
+        weights = None
         if arguments['--avg']:
-            wieghts = [1.0 / len(eavesdroppers_idx + normal_idx)] * len(eavesdroppers_idx + normal_idx)
-            mode = "AVG"
+            weights = [1.0 / len(workers_idx)] * len(workers_idx)
         elif arguments['--opt']:
-            # wieghts = fl.find_best_weights(trained_server_model, workers_idx)
-            wieghts = fl.find_best_weights_from_trusted_idx_normalized_W_outside_last_layer(workers_idx, trusted_idx)
-            mode = "OPT"
+            # weights = fl.find_best_weights(trained_server_model, workers_idx)
+            weights = fl.find_best_weights(trained_w0_model, workers_idx)
         
         if log_enable:
             fl.save_workers_model(workers_idx, str(round_no))
-            fl.save_model(
-                fl.get_average_model(trusted_idx),
-                "R{}_{}".format(round_no, "avg_trusted_model")
-            )
+            # fl.save_model(
+            #     fl.get_average_model(trusted_idx),
+            #     "R{}_{}".format(round_no, "avg_trusted_model")
+            # )
 
+        weighted_avg_model = fl.wieghted_avg_model(weights, workers_idx)
         # Update the server model
-        fl.update_models(
-            round_no, 
-            wieghts,
-            workers_idx,
-            trusted_idx)
+        fl.update_models(workers_idx, weighted_avg_model)
 
         # Apply the server model to the test dataset
-        fl.test(fl.server_model, test_dataloader, round_no)
+        fl.test(weighted_avg_model, test_dataloader, round_no)
 
         if log_enable:
             fl.save_model(
-                fl.server_model, 
-                "R{}_{}".format(round_no, "server_model")
+                weighted_avg_model, 
+                "R{}_{}".format(round_no, "weighted_avg_model")
             )
 
         print("")
