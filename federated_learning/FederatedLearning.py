@@ -15,6 +15,7 @@ from torch import optim, float32, int64, tensor
 from torchvision import datasets, transforms
 from sklearn.preprocessing import MinMaxScaler
 from federated_learning.FLCustomDataset import FLCustomDataset
+from federated_learning.helper import utils
 from federated_learning.FLNet import FLNet
 
 class FederatedLearning():
@@ -86,6 +87,7 @@ class FederatedLearning():
             else:
                 logging.debug("The model for worker {} exists".format(worker_id))
 
+    ############################ MNIST RELATED FUNCS ###############################
     
     def create_federated_mnist(self, dataset, destination_idx, batch_size, shuffle):
         """ 
@@ -111,41 +113,9 @@ class FederatedLearning():
 
         return fed_dataloader
 
+    ############################ FEMNIST RELATED FUNCS ###############################
 
-    # def read_raw_data(self, data_path, get_workers = False):
-    #     logging.debug("Reading raw data")
-    #     workers_id = []
-    #     groups = []
-    #     data = defaultdict(lambda : None)
-
-    #     files = os.listdir(data_path)
-    #     files = [f for f in files if f.endswith('.json')]
-        
-    #     for f in files:
-    #         file_path = os.path.join(data_path, f)
-    #         with open(file_path, 'r') as inf:
-    #             cdata = json.load(inf)
-    #         data.update(cdata['user_data'])
-    #         if get_workers:
-    #             workers_id.extend(cdata['users'])
-
-    #     if get_workers:
-    #         workers_id = list(sorted(data.keys()))
-
-    #     return workers_id, data
-
-
-    # def load_femnist_train(self, data_dir):
-    #     logging.info("Loading train dataset")
-    #     self.workers_id, self.train_data = self.read_raw_data(data_dir + "/train", get_workers = True)
-
-
-    # def load_femnist_test(self, data_dir):
-    #     logging.info("Loading test dataset")
-    #     _, self.test_data = self.read_raw_data(data_dir + "/test", get_workers = False)
-    
-
-    def load_federated_femnist_train_datasets(self, raw_data, workers_idx):
+    def create_fed_femnist_train_dataloader(self, raw_data, workers_idx):
         """ 
 
         Args:
@@ -155,8 +125,8 @@ class FederatedLearning():
         """    
         logging.info("Creating federated dataset for {} workers...".format(len(workers_idx)))
         train_datasets = []
-        test_data_images = tensor([], dtype=float32)
-        test_data_labels = tensor([], dtype=int64)
+        # test_data_images = tensor([], dtype=float32)
+        # test_data_labels = tensor([], dtype=int64)
 
         for worker_id in workers_idx:
 
@@ -164,36 +134,59 @@ class FederatedLearning():
             train_images = tensor(raw_data[worker_id]['x'], dtype=float32).reshape(-1, 1, 28, 28)
             train_labels = tensor(raw_data[worker_id]['y'], dtype=int64)
 
-            # transform=transforms.Compose([transforms.ToTensor()])
-            train_dataset = sy.BaseDataset(train_images, train_labels)\
-                .send(self.workers[worker_id])
+            train_dataset = sy.BaseDataset(
+                                train_images,
+                                train_labels,
+                                transform=transforms.Compose([
+                                    transforms.Normalize(
+                                        (train_images.mean(),), 
+                                        (train_images.std(),))]))\
+                            .send(self.workers[worker_id])
             train_datasets.append(train_dataset)
 
-            test_images = tensor(raw_data[worker_id]['x'], dtype=float32).reshape(-1 , 1, 28, 28)
-            test_labels = tensor(raw_data[worker_id]['y'], dtype=int64)
-
-            test_data_images = torch.cat((test_data_images, test_images))
-            test_data_labels = torch.cat((test_data_labels, test_labels))
-
         train_dataloader = sy.FederatedDataLoader(
-            sy.FederatedDataset(train_datasets), batch_size = self.batch_size, shuffle=False, drop_last = False, **self.kwargs)
+            sy.FederatedDataset(train_datasets), batch_size=self.batch_size, shuffle=False, drop_last=True, **self.kwargs)
 
         logging.info("Length of Federated Dataset (Total number of records for all workers): {}".format(
             len(train_dataloader.federated_dataset)))
-        
-        test_dataset = sy.BaseDataset(test_data_images, test_data_labels)
-        logging.info("Lenght of targets for test dataset: {}".format(len(test_data_labels)))
-        logging.debug("Length of the test dataset (Basedataset): {}".format(len(test_dataset)))
 
-        test_dataloader = torch.utils.data.DataLoader(
-            test_dataset, batch_size=self.test_batch_size, shuffle=True, drop_last = False, **self.kwargs)
-        
-        logging.debug("Length of the test data loader (datasets): {}".format(len(test_dataloader.dataset)))
-
-        return train_dataloader, test_dataloader
+        return train_dataloader
 
 
-    def create_server_femnist_dataset(self, raw_data, workers_idx, percentage):
+    def create_femnist_server_test_dataloader(self, raw_data, workers_idx):
+        """ 
+
+        Args:
+            raw_data (dict of str): dict contains train and test data categorized based on user id
+                # raw_data['f0_12345']['x'], raw_data['f0_12345']['y'] 
+        Returns:
+            Dataloader for the server
+        """    
+        logging.info("Creating femnist test dataloader possibly for the server")
+        raw_data = utils.extract_data(raw_data, workers_idx)
+        flattened_data_x, flattened_data_y = utils.get_flattened_data(raw_data)
+        test_images = tensor(flattened_data_x, dtype=float32).reshape(-1, 1, 28, 28)
+        test_labels = tensor(flattened_data_y, dtype=int64)
+
+        test_dataset = sy.BaseDataset(
+                            test_images,
+                            test_labels,
+                            transform=transforms.Compose([
+                                transforms.Normalize(
+                                    (test_images.mean(),), 
+                                    (test_images.std(),))]))\
+                        .send(self.server)
+
+        train_dataloader = sy.FederatedDataLoader(
+            sy.FederatedDataset([test_dataset]), batch_size=self.test_batch_size, shuffle=True, drop_last=True, **self.kwargs)
+
+        logging.info("Length of Federated Dataset (Total number of records for all workers): {}".format(
+            len(train_dataloader.federated_dataset)))
+
+        return train_dataloader
+
+
+    def create_femnist_server_train_dataset(self, raw_data, workers_idx, percentage):
         """ 
         Args:
             raw_data (dict): 
@@ -201,7 +194,7 @@ class FederatedLearning():
             percentage (float): Out of 100, amount of public data of each user
         Returns:
         """  
-        logging.info("Creating the server data from {} selected users...".format(len(workers_idx)))
+        logging.info("Creating aggregated data for the server from {} selected users...".format(len(workers_idx)))
         # Fraction of public data of each user, which be shared by the server
         server_images = np.array([], dtype = np.float32).reshape(-1, 28, 28)
         server_labels = np.array([], dtype = np.int64).reshape(0, 1)
@@ -221,140 +214,7 @@ class FederatedLearning():
         return server_images, server_labels
 
 
-    def create_federated_server_leaf_dataloader(self, train_images, train_labels, batch_size, shuffle):
-        logging.info("Creating federated server dataloader...")
-        aggregated_dataset = sy.BaseDataset(
-            tensor(train_images.reshape(-1, 1, 28, 28), dtype=float32),
-            tensor(train_labels.reshape(-1), dtype=int64))
-        
-        return sy.FederatedDataLoader(
-            aggregated_dataset.federate([self.server]), 
-            batch_size = batch_size, shuffle = shuffle, drop_last = False, **self.kwargs)
-
-
-    # def create_datasets(self, selected_workers_id):
-    #     logging.info("Creating federated dataset for selected {} workers...".format(len(selected_workers_id)))
-        
-    #     train_datasets = []
-    #     test_data_images = torch.Tensor()
-    #     test_data_labels = torch.Tensor()
-
-    #     for worker_id in selected_workers_id:
-    #         worker_record_num = len(self.train_data[worker_id]['y'])
-
-    #         logging.debug("Worker {} has {} records".format(worker_id, worker_record_num))
-    #         train_images = torch.Tensor(np.array(self.train_data[worker_id]['x'], dtype = np.single).reshape(-1, 1, 28, 28))
-    #         train_labels = torch.Tensor(np.array(self.train_data[worker_id]['y'], dtype = np.single))
-    #         logging.debug("Number of training data for user {} is {}".format(worker_id, len(train_labels)))
-
-    #         # transform=transforms.Compose([transforms.ToTensor()])
-    #         train_dataset = sy.BaseDataset(train_images, train_labels)\
-    #             .send(self.workers[worker_id])
-    #         train_datasets.append(train_dataset)
-
-    #         logging.debug("Number of training data in the BaseDataset class is {}".format(len(train_dataset.targets)))
-
-    #         test_images = torch.Tensor(np.array(self.test_data[worker_id]['x'], dtype = np.single).reshape(-1 , 1, 28, 28))
-    #         test_labels = torch.Tensor(np.array(self.test_data[worker_id]['y'], dtype = np.single))
-    #         logging.debug("Number of testing data for user {} is {}".format(worker_id, len(test_labels)))
-
-    #         test_data_images = torch.cat((test_data_images, test_images))
-    #         test_data_labels = torch.cat((test_data_labels, test_labels))
-
-    #     train_dataset_loader = sy.FederatedDataLoader(
-    #         sy.FederatedDataset(train_datasets), batch_size = self.batch_size, shuffle=False, drop_last = True, **self.kwargs)
-
-    #     logging.info("Length of Federated Dataset (Total number of records for all workers): {}".format(len(train_dataset_loader.federated_dataset)))
-        
-    #     test_dataset = sy.BaseDataset(test_data_images, test_data_labels)
-    #     logging.info("Lenght of targets for test: {}".format(len(test_data_labels)))
-    #     logging.debug("Length of the test dataset (Basedataset): {}".format(len(test_dataset)))
-
-    #     test_dataset_loader = torch.utils.data.DataLoader(
-    #         test_dataset, batch_size=self.test_batch_size, shuffle=True, drop_last = False, **self.kwargs)
-        
-    #     logging.debug("Length of the test data loader (datasets): {}".format(len(test_dataset_loader.dataset)))
-
-    #     return train_dataset_loader, test_dataset_loader
-        
-
-    # # Create aggregation in server from all users.
-    # def create_mnist_server_data(self, workers_id_list):
-    #     logging.info("Creating the aggregated data for the server from {} selected users...".format(len(workers_id_list)))
-    #     # Fraction of public data of each user, which be shared by the server
-    #     aggregated_image = np.array([], dtype = np.single).reshape(-1, 28, 28)
-    #     aggregated_label = np.array([], dtype = np.single)
-    #     fraction = 0.2 
-    #     total_samples_count = 0
-    #     for worker_id in workers_id_list:
-    #         worker_samples_count = len(self.train_data[worker_id]['y'])
-            
-    #         num_samples_for_server = math.floor(fraction * len(self.train_data[worker_id]['y']))
-    #         logging.debug("Sending {} from client {} with total {}".format(
-    #             num_samples_for_server, worker_id, worker_samples_count
-    #         ))
-    #         total_samples_count = total_samples_count + num_samples_for_server
-    #         indices = sample(range(worker_samples_count), num_samples_for_server)
-            
-    #         images = np.array([self.train_data[worker_id]['x'][i] for i in indices], dtype = np.single).reshape(-1, 28, 28)
-    #         labels = np.array([self.train_data[worker_id]['y'][i] for i in indices], dtype = np.single)
-    #         aggregated_image = np.concatenate((aggregated_image, images))
-    #         aggregated_label = np.concatenate((aggregated_label, labels))
-
-    #     logging.info("Selected {} samples in total for the server from all users.".format(total_samples_count))
-    #     logging.debug("Aggregated train images shape: {}, dtype: {}".format(
-    #         aggregated_image.shape, aggregated_image.dtype))
-    #     logging.debug("Aggregated train images label: {}, dtype: {}".format(
-    #         aggregated_label.shape, aggregated_label.dtype))
-
-    #     aggregated_dataset = sy.BaseDataset(torch.Tensor(aggregated_image),\
-    #         torch.Tensor(aggregated_label), \
-    #         transform=transforms.Compose([transforms.ToTensor()]))
-        
-    #     aggregated_dataloader = sy.FederatedDataLoader(
-    #         aggregated_dataset.federate([self.server]), batch_size = self.batch_size, shuffle = True, drop_last = True, **self.kwargs)
-
-    #     return aggregated_dataloader
-
-
-    # # Create aggregation in server from all users.
-    # def create_aggregated_data(self, workers_id_list):
-    #     logging.info("Creating the aggregated data for the server from {} selected users...".format(len(workers_id_list)))
-    #     # Fraction of public data of each user, which be shared by the server
-    #     aggregated_image = np.array([], dtype = np.single).reshape(-1, 28, 28)
-    #     aggregated_label = np.array([], dtype = np.single)
-    #     fraction = 0.2 
-    #     total_samples_count = 0
-    #     for worker_id in workers_id_list:
-    #         worker_samples_count = len(self.train_data[worker_id]['y'])
-            
-    #         num_samples_for_server = math.floor(fraction * len(self.train_data[worker_id]['y']))
-    #         logging.debug("Sending {} from client {} with total {}".format(
-    #             num_samples_for_server, worker_id, worker_samples_count
-    #         ))
-    #         total_samples_count = total_samples_count + num_samples_for_server
-    #         indices = sample(range(worker_samples_count), num_samples_for_server)
-            
-    #         images = np.array([self.train_data[worker_id]['x'][i] for i in indices], dtype = np.single).reshape(-1, 28, 28)
-    #         labels = np.array([self.train_data[worker_id]['y'][i] for i in indices], dtype = np.single)
-    #         aggregated_image = np.concatenate((aggregated_image, images))
-    #         aggregated_label = np.concatenate((aggregated_label, labels))
-
-    #     logging.info("Selected {} samples in total for the server from all users.".format(total_samples_count))
-    #     logging.debug("Aggregated train images shape: {}, dtype: {}".format(
-    #         aggregated_image.shape, aggregated_image.dtype))
-    #     logging.debug("Aggregated train images label: {}, dtype: {}".format(
-    #         aggregated_label.shape, aggregated_label.dtype))
-
-    #     aggregated_dataset = sy.BaseDataset(torch.Tensor(aggregated_image),\
-    #         torch.Tensor(aggregated_label), \
-    #         transform=transforms.Compose([transforms.ToTensor()]))
-        
-    #     aggregated_dataloader = sy.FederatedDataLoader(
-    #         aggregated_dataset.federate([self.server]), batch_size = self.batch_size, shuffle = True, drop_last = True, **self.kwargs)
-
-    #     return aggregated_dataloader
-
+    ############################ GENERAL FUNC ################################
 
     def send_model(self, model, location, location_id):
         if isinstance(model, dict):
@@ -381,23 +241,6 @@ class FederatedLearning():
                         ww.get()
         elif model.location is not None:
             model.get()
-
-
-    def get_labels_from_data_percentage(self, data_percentage):
-        # Find labels which are going to be permuted base on the value of the percentage
-        labels_to_be_changed = None
-        if 20 <= data_percentage and data_percentage < 40:
-            labels_to_be_changed = np.array(sample(range(10), 2))
-        elif 40 <= data_percentage and data_percentage < 60:
-            labels_to_be_changed = np.array(sample(range(10), 4))
-        elif 60 <= data_percentage and data_percentage < 80:
-            labels_to_be_changed = np.array(sample(range(10), 6))
-        elif 80 <= data_percentage and data_percentage < 100:
-            labels_to_be_changed = np.array(sample(range(10), 8))
-        elif data_percentage == 100:
-            labels_to_be_changed = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-        
-        return labels_to_be_changed
 
 
     # # '''

@@ -64,6 +64,15 @@ def get_workers_idx(population, num, excluded_idx):
     return idx
 
 
+def extract_data(raw_data, workers_idx):
+    logging.info("Extract data from raw data for {} of users...".format(len(workers_idx)))
+    data = dict()
+    for ww_id, ww_data in raw_data.items():
+        if ww_id in workers_idx:
+            data[ww_id] = ww_data
+    return data
+
+
 ################ Leaf related functions #################
 
 def read_raw_data(data_path):
@@ -114,6 +123,50 @@ def load_leaf_test(data_dir):
     logging.info("Loading test dataset from {}".format(data_dir))
     return read_raw_data(data_dir + "/test")
 
+
+def get_flattened_data(data):
+    data_flattened_x = np.array([], dtype = np.float32).reshape(0, 28 * 28)
+    tmp_array = [np.array(data_['x'], dtype = np.float32).reshape(-1, 28 * 28) for data_ in data.values()]
+    for dd in tmp_array:
+        data_flattened_x = np.concatenate((data_flattened_x, dd))
+    data_flattened_y = np.array([], dtype = np.float32)
+    tmp_array_y = [np.array(data_['y'], dtype = np.int64).reshape(-1) for data_ in data.values()]
+    for dd in tmp_array_y:
+        data_flattened_y = np.concatenate((data_flattened_y, dd))
+
+    return data_flattened_x, data_flattened_y
+
+
+def dataset_info(dataset):
+    list_keys = list(dataset.keys())
+    numbers = dict()
+    # numbers[num_samples] = num_users
+    for uu, dd in dataset.items():
+        key = str(len(dd['y']))
+        if key in numbers:
+            numbers[key] += 1
+        else:
+            numbers[key] = 1
+        
+    total_samples = 0
+    for uu in sorted(numbers.keys()):
+        print("{}:\t{}".format(uu, numbers[uu]))
+        total_samples += int(uu) * int(numbers[uu])
+
+    print("Mean num of samples/user: {}".format(
+        round(np.mean([int(ii) for ii in numbers])), 2))
+    print("Total Samples:\t{}".format(total_samples))
+    print("Total Users:\t{}".format(len(list_keys)))
+    print("[{}]: Images: {}, Pixels: {}".format(
+        list_keys[0], 
+        len(dataset[list_keys[0]]['x']), 
+        len(dataset[list_keys[0]]['x'][0])))
+    data_flatted_x, data_flatted_y = get_flattened_data(dataset)
+    print("mean: {}\nstd: {},\nmax: {}".format(
+            data_flatted_x.mean(), 
+            data_flatted_x.std(), 
+            data_flatted_x.max()))
+    print("-"*5)
 
 ################ MNIST related functions #################
 
@@ -280,19 +333,21 @@ def perfrom_attack(dataset, attack_id, workers_idx, evasdropers_idx, percentage=
 
 def attack_shuffle_pixels(data):
     for ii in range(len(data)):
-        pixels_flatted = data[ii].reshape(-1)
-        rand_idx = randperm(len(pixels_flatted))
-        pixels_flatted = pixels_flatted[rand_idx]
-        data[ii] = pixels_flatted.reshape(-1, 28, 28)
+        pixels_flattened = data[ii].reshape(-1)
+        rand_idx = randperm(len(pixels_flattened))
+        pixels_flattened = pixels_flattened[rand_idx]
+        data[ii] = pixels_flattened.reshape(-1, 28, 28)
     return data
+
 
 def attack_negative_pixels(data):
     for ii in range(len(data)):
-        pixels_flatted = data[ii].reshape(-1)
-        rand_idx = randperm(len(pixels_flatted))
-        pixels_flatted = pixels_flatted[rand_idx]
-        data[ii] = pixels_flatted.reshape(-1, 28, 28)
+        pixels_flattened = data[ii].reshape(-1)
+        rand_idx = randperm(len(pixels_flattened))
+        pixels_flattened = pixels_flattened[rand_idx]
+        data[ii] = pixels_flattened.reshape(-1, 28, 28)
     return data
+
 
 def attack_shuffle_labels(targets, percentage):
     num_categories = unique(targets)
@@ -313,6 +368,7 @@ def attack_shuffle_labels(targets, percentage):
             target[ii] = target_map[targets[ii].item()]
     logging.debug("target labels after: {}...".format(targets[:10]))
     return targets
+
 
 ################ EMNIST (google) related functions #################
 
