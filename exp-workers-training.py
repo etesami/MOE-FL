@@ -1,7 +1,7 @@
 """
 Usage: 
-    run-study-iid.py\n\t\t(--avg | --opt)\n\t\t--no-attack --output-prefix=NAME [--log] [--nep-log]
-    run-study-iid.py\n\t\t(--avg | --opt)\n\t\t--attack=ATTACK-TYPE --eav-num=NUM --output-prefix=NAME [--log] [--nep-log]
+    exp-workers-training.py\n\t\t(--avg | --opt)\n\t\t--no-attack --output-prefix=NAME [--log] [--nep-log]
+    exp-workers-training.py\n\t\t(--avg | --opt)\n\t\t--attack=ATTACK-TYPE --output-prefix=NAME [--log] [--nep-log]
 """
 from docopt import docopt
 import logging
@@ -23,8 +23,6 @@ if __name__ == '__main__':
     configs = utils.load_config(CONFIG_PATH)
     logging.basicConfig(format='%(asctime)s %(message)s', level=configs['log']['level'])
     random.seed(configs['runtime']['random_seed'])
-    if not arguments['--no-attack'] :
-        configs['runtime']['femnist_eavesdropper_num'] = int(arguments['--eav-num'])
 
     # Logging initialization
     log_enable = True if arguments['--log'] else False
@@ -54,8 +52,8 @@ if __name__ == '__main__':
         output_dir, 
         configs['runtime']['random_seed'])
 
-    fl.create_server()
-    fl.create_server_model()
+    # fl.create_server()
+    # fl.create_server_model()
 
     raw_train_data = utils.preprocess_leaf_data(
         utils.load_leaf_train(configs['data']['FEMNIST_PATH']), only_digits=True
@@ -98,16 +96,8 @@ if __name__ == '__main__':
         utils.write_to_file(output_dir, "trusted", trusted_idx)
    
     # Create test dataloader from all normal and eveasdroppers
-    test_dataset = fl.create_femnist_dataset(
-        raw_test_data, workers_idx_to_be_used)
-    logging.info("Aggregated test dataset: len: {}".format(len(test_dataset)))
-    test_dataloader = DataLoader(
-        test_dataset,
-        batch_size=configs['runtime']['test_batch_size'],
-        shuffle=True,
-        drop_last=True)
-    logging.info("Aggregated test dataloader: Batch Num: {}, Total samples: {}".format(
-            len(test_dataloader), len(test_dataloader) * test_dataloader.batch_size))
+    # fed_test_dataloader = fl.create_femnist_server_test_dataloader(
+    #     raw_test_data, workers_idx_to_be_used)
 
     # W0 model
     # trained_w0_model = load(configs['runtime']['W0_pure_path'])
@@ -119,8 +109,6 @@ if __name__ == '__main__':
         logging.info("Perform combined attacks 1, 2, 3")
         dataset = utils.perfrom_attack_femnist(
                 raw_train_data, 1, workers_idx_to_be_used, eavesdroppers_idx)
-        # dataset = utils.perfrom_attack_femnist(
-        #         dataset, 2, workers_idx_to_be_used, eavesdroppers_idx)
         dataset = utils.perfrom_attack_femnist(
                 dataset, 3, workers_idx_to_be_used, eavesdroppers_idx)
         fed_train_datasets = fl.create_femnist_fed_datasets(dataset, workers_idx_to_be_used)
@@ -139,19 +127,28 @@ if __name__ == '__main__':
         dataloader = sy.FederatedDataLoader(
             fed_dataset, batch_size=configs['runtime']['batch_size'], shuffle=False, drop_last=True)
         fed_train_dataloaders[ww_id] = dataloader
-        if fed_dataset.workers[0] != ww_id:
-            logging.error("ww_id not equal to fed_dataset.workers[0]! Line 141: run-study-noniid.")
+
+    logging.info("Creating test dataset for each worker...")
+    test_datasets = fl.create_femnist_datasets(raw_test_data, workers_idx_to_be_used)
+    test_dataloaders = dict()
+    for ww_id, test_dataset in test_datasets.items():
+        dataloader = DataLoader(
+            test_dataset, 
+            batch_size=configs['runtime']['test_batch_size'], 
+            shuffle=False, drop_last=True)
+        test_dataloaders[ww_id] = dataloader
         
     for round_no in range(rounds_num):
         for counter, worker_id in enumerate(workers_idx_to_be_used):
             logging.info("Training worker {} out of {} workers...".format(
                 counter+1, len(workers_idx_to_be_used)))
             fl.train_workers(fed_train_dataloaders[worker_id], [worker_id], round_no, epochs_num)
+            fl.test(fl.workers_model[worker_id], test_dataloaders[worker_id], worker_id, round_no)
 
         # Find the best weights and update the server model
-        weights = None
-        if arguments['--avg']:
-            weights = [1.0 / len(workers_idx_to_be_used)] * len(workers_idx_to_be_used)
+        # weights = None
+        # if arguments['--avg']:
+        #     weights = [1.0 / len(workers_idx_to_be_used)] * len(workers_idx_to_be_used)
         # elif arguments['--opt']:
         #     trusted_weights = [1.0 / len(trusted_idx)] * len(trusted_idx)
         #     avg_trusted_model = fl.wieghted_avg_model(trusted_weights, trusted_idx)
@@ -164,18 +161,18 @@ if __name__ == '__main__':
             #     "R{}_{}".format(round_no, "avg_trusted_model")
             # )
 
-        weighted_avg_model = fl.wieghted_avg_model(weights, workers_idx_to_be_used)
-        # Update the server model
-        fl.update_models(workers_idx_to_be_used, weighted_avg_model)
+        # weighted_avg_model = fl.wieghted_avg_model(weights, normal_idx + eavesdroppers_idx)
+        # # Update the server model
+        # fl.update_models(workers_idx_to_be_used, weighted_avg_model)
 
-        # Apply the server model to the test dataset
-        fl.test(weighted_avg_model, test_dataloader, "server", round_no)
+        # # Apply the server model to the test dataset
+        # fl.test(weighted_avg_model, fed_test_dataloader, round_no)
 
-        if log_enable:
-            fl.save_model(
-                weighted_avg_model, 
-                "R{}_{}".format(round_no, "weighted_avg_model")
-            )
+        # if log_enable:
+        #     fl.save_model(
+        #         weighted_avg_model, 
+        #         "R{}_{}".format(round_no, "weighted_avg_model")
+        #     )
 
         print("")
     

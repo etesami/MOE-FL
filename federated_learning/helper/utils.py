@@ -12,7 +12,7 @@ from math import floor
 from collections import defaultdict
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from torch import tensor, cat, float32, int64, randperm, unique
+from torch import tensor, cat, float32, int64, randperm
 from federated_learning.FLCustomDataset import FLCustomDataset
 
 def load_config(configPath):
@@ -167,6 +167,42 @@ def dataset_info(dataset):
             data_flatted_x.std(), 
             data_flatted_x.max()))
     print("-"*5)
+
+
+def perfrom_attack_femnist(raw_data, attack_id, workers_idx, evasdropers_idx, percentage=100):
+    """ 
+    Args:
+        dataset (FLCustomDataset): 
+        attack_id (int):
+            1: shuffle
+            2: negative_value
+            3: labels
+        
+        evasdropers_idx (list(int))
+        percentage (int): Amount of data affected in each eavesdropper
+    Returns:
+        dataset (FLCustomDataset)
+    """  
+    logging.info("Attack ID: {}".format(attack_id))
+    logging.info("Performing attack on {}".format(evasdropers_idx))
+    for worker_id in workers_idx:
+        if worker_id in evasdropers_idx:
+            if attack_id == 1:
+                logging.debug("Performing attack [shuffle pixels] for user {}...".format(worker_id))
+                raw_data[worker_id].update({'x': attack_shuffle_pixels(raw_data[worker_id]['x'])})
+            elif attack_id == 2:
+                logging.debug("Performing attack [negative of pixels] for user {}...".format(worker_id))
+                raw_data[worker_id]['x'] = attack_negative_pixels(raw_data[worker_id]['x'])
+            elif attack_id == 3:
+                logging.debug("Performing attack [shuffle labels] for user {}...".format(worker_id))
+                raw_data[worker_id]['y'] = attack_shuffle_labels(raw_data[worker_id]['y'], percentage)
+            elif attack_id == 4:
+                logging.debug("Performing attack [black pixels] for user {}...".format(worker_id))
+                raw_data[worker_id]['x'] = attack_black_pixels(raw_data[worker_id]['x'])
+            else:
+                logging.debug("NOT EXPECTED: NO VALID ATTACK ID!")
+
+    return raw_data
 
 ################ MNIST related functions #################
 
@@ -343,30 +379,43 @@ def attack_shuffle_pixels(data):
 def attack_negative_pixels(data):
     for ii in range(len(data)):
         pixels_flattened = data[ii].reshape(-1)
-        rand_idx = randperm(len(pixels_flattened))
-        pixels_flattened = pixels_flattened[rand_idx]
-        data[ii] = pixels_flattened.reshape(-1, 28, 28)
+        negative_pixels = np.array([1 - pp for pp in pixels_flattened], dtype = np.float32)
+        data[ii] = negative_pixels.reshape(-1, 28, 28)
     return data
 
 
+def attack_black_pixels(data):
+    data = np.zeros([data.shape[0], data.shape[1], data.shape[2]], dtype = np.float32)
+    return data
+
 def attack_shuffle_labels(targets, percentage):
-    num_categories = unique(targets)
-    percentage = 50
+    num_categories = np.unique(targets)
     idx1 = np.array(sample(
-        range(len(num_categories)), 
+        num_categories.tolist(), 
         int(percentage * 0.01 * len(num_categories))), dtype=np.int64)
-    idx2 = np.random.permutation(idx1)
+    
+    # Permute idx1 as idx2
+    idx2 = []
+    while len(idx2) < len(idx1):
+        ii = len(idx2)
+        nn = choice(idx1)
+        if idx1[ii] != nn and nn not in idx2:
+            idx2.append(nn)
+    idx2 = np.array(idx2)
+    
+    logging.debug("Attack shuffel idx1: {}".format(idx1))
+    logging.debug("Attack shuffel idx2: {}".format(idx2))
 
     target_map = dict()
     for ii in range(len(idx1)):
-        target_map[idx1[ii]] = tensor(idx2[ii])
+        target_map[idx1[ii]] = idx2[ii]
 
-    logging.debug("Target map for attack: suffle labels:\n".format(target_map))
-    logging.debug("target labels before: {}...".format(targets[:10]))
+    logging.debug("Target map for attack suffle labels: {}".format(target_map))
+    logging.debug("target labels before:\t{}...".format(targets[:15].ravel()))
     for ii in range(len(targets)):
-        if targets[ii].item() in target_map.keys():
-            target[ii] = target_map[targets[ii].item()]
-    logging.debug("target labels after: {}...".format(targets[:10]))
+        if targets[ii][0] in target_map.keys():
+            targets[ii] = target_map[targets[ii][0]]
+    logging.debug("target labels after:\t{}...".format(targets[:10].ravel()))
     return targets
 
 
