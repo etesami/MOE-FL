@@ -5,6 +5,7 @@ import numpy as np
 import logging
 import json
 import h5py
+from tqdm import tqdm
 from os import mkdir
 from random import sample, choice
 from time import strftime
@@ -136,6 +137,13 @@ def get_flattened_data(data):
 
     return data_flattened_x, data_flattened_y
 
+def split_raw_data(raw_data, num):
+    splitted_data = dict()
+    logging.info("Splitting the dataset into {} shards...".format(num))
+    splitted_data['x'] = np.split(raw_data['x'], num)
+    splitted_data['y'] = np.split(raw_data['y'], num)
+    logging.info("Splitted data into {} shards..... OK".format(len(splitted_data['y'])))
+    return splitted_data
 
 def dataset_info(dataset):
     list_keys = list(dataset.keys())
@@ -241,27 +249,26 @@ def get_server_mnist_dataset(dataset, workers_num, percentage):
     return FLCustomDataset(server_dataset['x'], server_dataset['y'])
 
 
-def load_mnist_data_train(data_dir, percentage):
+def load_mnist_data_train(data_dir, fraction):
     """ 
     Args:
         data_dir (str): 
-        percentage (float): Out of 100, how much of data is imported
+        fraction (float): Out of 1, how much of data is imported
     Returns:
         
     """  
-    logging.info("Loading {}% of train data from MNIST dataset.".format(percentage))
+    logging.info("Loading {}% of train data from MNIST dataset.".format(fraction * 100.0))
     file_path = "/train-images-idx3-ubyte"
     train_data = dict()
     train_data['x'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.float32)
     
-    # Save only some percentage of data
-    train_data['x'] = train_data['x'][:int((float(percentage) / 100.0) * len(train_data['x']))]
-    logging.debug("Train data loaded: {}".format(len(train_data['x'])))
-    
+    train_data['x'] = train_data['x'][:int(float(fraction) * len(train_data['x']))]
     file_path = "/train-labels-idx1-ubyte"
     train_data['y'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.int64)
-    train_data['y'] = train_data['y'][:int((float(percentage) / 100.0) * len(train_data['y']))]
+    train_data['y'] = train_data['y'][:int(float(fraction) * len(train_data['y']))]
 
+    logging.info("Train data loaded: {}".format(len(train_data['x'])))
+    logging.info("Loading {}% of train data from MNIST dataset..... OK".format(fraction * 100.0))
     return train_data
     
 
@@ -274,6 +281,7 @@ def load_mnist_data_test(data_dir):
     file_path = "/t10k-labels-idx1-ubyte"
     test_data['y'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.int64)
 
+    logging.info("Loading test data from MNIST dataset..... OK")
     return test_data
 
 
@@ -292,7 +300,44 @@ def preprocess_mnist(dataset):
     if max_pixel.max() > 1:
         images = dataset['x'] / 255.0
         dataset['x'] = images
+    logging.info("Preparing the MNIST dataset..... OK")
     return dataset
+
+
+def sort_mnist(dataset):
+    """ 
+    Args:
+        dataset (dict of str: numpy array):
+
+    Returns:
+        
+    """ 
+    logging.info("Sorting the MNIST dataset based on labels.")
+    # dataset['x'] images
+    # dataset['y'] labels
+    sorted_index = sorted(range(len(dataset['y'])), key=lambda k: dataset['y'][k])
+    sorted_dataset = dict()
+    sorted_dataset['x'] = dataset['x'][sorted_index]
+    sorted_dataset['y'] = dataset['y'][sorted_index]
+    logging.info("Sorting the MNIST dataset based on labels..... OK")
+    return sorted_dataset
+
+
+def sort_mnist_dataset(dataset):
+    """ 
+    Args:
+        dataset (torch.dataset):
+
+    Returns:
+        
+    """ 
+    logging.info("Sorting the MNIST dataset based on labels...")
+    sorted_index = sorted(range(len(dataset.targets)), key=lambda k: dataset.targets[k])
+    sorted_dataset = dict()
+    sorted_dataset['x'] = dataset.data[sorted_index]
+    sorted_dataset['y'] = dataset.targets[sorted_index]
+    logging.info("Sorting the MNIST dataset based on labels..... OK")
+    return sorted_dataset
 
 
 def get_mnist_dataset(raw_dataset):
