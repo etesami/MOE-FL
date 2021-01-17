@@ -24,11 +24,12 @@ class FLCustomDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        sample, target = self.data[idx], self.targets[idx]
+        img, target = self.data[idx], self.targets[idx]
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
-        # img = Image.fromarray(sample.numpy(), mode='L')
-        if self.transform is not None:
-            sample = self.transform(sample)
+        img = Image.fromarray(img.numpy(), mode='L')
 
-        return sample, target
+        if self.transform is not None:
+            img = self.transform(img)
+
+        return img, target

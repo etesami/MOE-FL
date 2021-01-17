@@ -5,15 +5,16 @@ import numpy as np
 import logging
 import json
 import h5py
+import syft as sy
 from tqdm import tqdm
 from os import mkdir
 from random import sample, choice
 from time import strftime
 from math import floor
 from collections import defaultdict
-from torchvision import transforms
+from torchvision import transforms, datasets
 from torch.utils.data import DataLoader
-from torch import tensor, cat, float32, int64, randperm
+from torch import tensor, cat, float32, int64, randperm, split
 from federated_learning.FLCustomDataset import FLCustomDataset
 
 def load_config(configPath):
@@ -137,13 +138,21 @@ def get_flattened_data(data):
 
     return data_flattened_x, data_flattened_y
 
-def split_raw_data(raw_data, num):
-    splitted_data = dict()
-    logging.info("Splitting the dataset into {} shards...".format(num))
-    splitted_data['x'] = np.split(raw_data['x'], num)
-    splitted_data['y'] = np.split(raw_data['y'], num)
-    logging.info("Splitted data into {} shards..... OK".format(len(splitted_data['y'])))
-    return splitted_data
+def split_dataset(dataset, samples_per_shards_num):
+    splitted_datasets = []
+    logging.info("Splitting the dataset into tensors with {} samples...".format(samples_per_shards_num))
+    splitted_data = split(dataset.data, samples_per_shards_num)
+    splitted_targets = split(dataset.targets, samples_per_shards_num)
+    for ii in range(len(splitted_data)):
+        splitted_datasets.append(
+            FLCustomDataset(
+                splitted_data[ii],
+                splitted_targets[ii],
+                transform=transforms.Compose([
+                    transforms.ToTensor()])
+            )
+        )
+    return splitted_datasets
 
 def dataset_info(dataset):
     list_keys = list(dataset.keys())
@@ -249,7 +258,7 @@ def get_server_mnist_dataset(dataset, workers_num, percentage):
     return FLCustomDataset(server_dataset['x'], server_dataset['y'])
 
 
-def load_mnist_data_train(data_dir, fraction):
+def load_mnist_data_train():
     """ 
     Args:
         data_dir (str): 
@@ -257,70 +266,73 @@ def load_mnist_data_train(data_dir, fraction):
     Returns:
         
     """  
-    logging.info("Loading {}% of train data from MNIST dataset.".format(fraction * 100.0))
-    file_path = "/train-images-idx3-ubyte"
-    train_data = dict()
-    train_data['x'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.float32)
+    logging.info("Loading train data from MNIST dataset...")
+    # file_path = "/train-images-idx3-ubyte"
+    # train_data = dict()
+    # train_data['x'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.float32)
     
-    train_data['x'] = train_data['x'][:int(float(fraction) * len(train_data['x']))]
-    file_path = "/train-labels-idx1-ubyte"
-    train_data['y'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.int64)
-    train_data['y'] = train_data['y'][:int(float(fraction) * len(train_data['y']))]
+    # train_data['x'] = train_data['x'][:int(float(fraction) * len(train_data['x']))]
+    # file_path = "/train-labels-idx1-ubyte"
+    # train_data['y'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.int64)
+    # train_data['y'] = train_data['y'][:int(float(fraction) * len(train_data['y']))]
 
-    logging.info("Train data loaded: {}".format(len(train_data['x'])))
-    logging.info("Loading {}% of train data from MNIST dataset..... OK".format(fraction * 100.0))
-    return train_data
+    return datasets.MNIST("/tmp/data", train=True, download=True,
+                        transform=transforms.Compose([
+                                transforms.ToTensor(),
+                                transforms.Normalize((0.1307,), (0.3081,))]))
     
 
 def load_mnist_data_test(data_dir):
     logging.info("Loading test data from MNIST dataset.")
-    file_path = "/t10k-images-idx3-ubyte"
-    test_data = dict()
-    test_data['x'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.float32)
+    # file_path = "/t10k-images-idx3-ubyte"
+    # test_data = dict()
+    # test_data['x'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.float32)
     
-    file_path = "/t10k-labels-idx1-ubyte"
-    test_data['y'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.int64)
+    # file_path = "/t10k-labels-idx1-ubyte"
+    # test_data['y'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.int64)
 
-    logging.info("Loading test data from MNIST dataset..... OK")
-    return test_data
+    return datasets.MNIST("/tmp/data", train=False, download=True, 
+                        transform=transforms.Compose([
+                                transforms.ToTensor(),
+                                transforms.Normalize((0.1307,), (0.3081,))]))
 
 
-def preprocess_mnist(dataset):
-    """ 
-    Args:
-        dataset (dict of str: numpy array):
+# def preprocess_mnist(dataset):
+#     """ 
+#     Args:
+#         dataset (dict of str: numpy array):
 
-    Returns:
+#     Returns:
         
-    """ 
-    logging.info("Preparing the MNIST dataset.")
-    # dataset['x'] images
-    # dataset['y'] labels
-    max_pixel = dataset['x'].max()
-    if max_pixel.max() > 1:
-        images = dataset['x'] / 255.0
-        dataset['x'] = images
-    logging.info("Preparing the MNIST dataset..... OK")
-    return dataset
+#     """ 
+#     logging.info("Preparing the MNIST dataset.")
+#     # dataset['x'] images
+#     # dataset['y'] labels
+#     max_pixel = dataset['x'].max()
+#     if max_pixel.max() > 1:
+#         images = dataset['x'] / 255.0
+#         dataset['x'] = images
+#     logging.info("Preparing the MNIST dataset..... OK")
+#     return dataset
 
 
-def sort_mnist(dataset):
-    """ 
-    Args:
-        dataset (dict of str: numpy array):
+# def sort_mnist(dataset):
+#     """ 
+#     Args:
+#         dataset (dict of str: numpy array):
 
-    Returns:
+#     Returns:
         
-    """ 
-    logging.info("Sorting the MNIST dataset based on labels.")
-    # dataset['x'] images
-    # dataset['y'] labels
-    sorted_index = sorted(range(len(dataset['y'])), key=lambda k: dataset['y'][k])
-    sorted_dataset = dict()
-    sorted_dataset['x'] = dataset['x'][sorted_index]
-    sorted_dataset['y'] = dataset['y'][sorted_index]
-    logging.info("Sorting the MNIST dataset based on labels..... OK")
-    return sorted_dataset
+#     """ 
+#     logging.info("Sorting the MNIST dataset based on labels.")
+#     # dataset['x'] images
+#     # dataset['y'] labels
+#     sorted_index = sorted(range(len(dataset['y'])), key=lambda k: dataset['y'][k])
+#     sorted_dataset = dict()
+#     sorted_dataset['x'] = dataset['x'][sorted_index]
+#     sorted_dataset['y'] = dataset['y'][sorted_index]
+#     logging.info("Sorting the MNIST dataset based on labels..... OK")
+#     return sorted_dataset
 
 
 def sort_mnist_dataset(dataset):
@@ -333,28 +345,34 @@ def sort_mnist_dataset(dataset):
     """ 
     logging.info("Sorting the MNIST dataset based on labels...")
     sorted_index = sorted(range(len(dataset.targets)), key=lambda k: dataset.targets[k])
-    sorted_dataset = dict()
-    sorted_dataset['x'] = dataset.data[sorted_index]
-    sorted_dataset['y'] = dataset.targets[sorted_index]
-    logging.info("Sorting the MNIST dataset based on labels..... OK")
-    return sorted_dataset
-
-
-def get_mnist_dataset(raw_dataset):
-    """ 
-    Args:
-        raw_dataset (list[numpy array]): 
-    Returns:
-        
-    """    
-    logging.info("Creating MNIST dataset.")
     return FLCustomDataset(
-        raw_dataset['x'],
-        raw_dataset['y'],
+        dataset.data[sorted_index],
+        dataset.targets[sorted_index],
         transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((raw_dataset['x'].mean(),), (raw_dataset['x'].std(),))])
-    )
+            transforms.ToTensor()])
+        )
+    # sorted_dataset = dict()
+    # sorted_dataset['x'] = dataset.data[sorted_index]
+    # sorted_dataset['y'] = dataset.targets[sorted_index]
+    # logging.info("Sorting the MNIST dataset based on labels..... OK")
+    # return sorted_dataset
+
+
+# def get_mnist_dataset(raw_dataset):
+#     """ 
+#     Args:
+#         raw_dataset (list[numpy array]): 
+#     Returns:
+        
+#     """    
+#     logging.info("Creating MNIST dataset.")
+#     return FLCustomDataset(
+#         raw_dataset['x'],
+#         raw_dataset['y'],
+#         transform=transforms.Compose([
+#             transforms.ToTensor(),
+#             transforms.Normalize((0.1307,), (0.3081,))])
+#     )
 
 
 def get_dataloader(dataset, batch_size, shuffle, drop_last):

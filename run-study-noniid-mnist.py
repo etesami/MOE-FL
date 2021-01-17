@@ -24,14 +24,14 @@ from federated_learning.helper import utils
 CONFIG_PATH = 'configs/defaults.yml'
 
 ############ TEMPORARILY ################
-arguments = docopt(__doc__)
+# arguments = docopt(__doc__)
 ############ TEMPORARILY ################
-# arguments = dict()
-# arguments['--log'] = False
+arguments = dict()
+arguments['--log'] = False
+arguments['--output-prefix'] = "tmp"
+arguments["--no-attack"] = True
+arguments['--avg'] = True
 arguments['--nep-log'] = False
-# arguments['--output-prefix'] = "tmp"
-# arguments["--no-attack"] = True
-# arguments['--avg'] = True
 ############ TEMPORARILY ################
 
 
@@ -64,7 +64,7 @@ def create_mnist_federated_datasets(raw_dataset, workers):
             labels = torch.tensor([], dtype=torch.int64)
             for shard in ww_data:
                 images_ = torch.tensor(shard['x'], dtype=torch.float32)
-                labels_ = torch.tensor(shard['y'].ravel(), dtype=torch.int64)
+                labels_ = torch.tensor(shard['y'].view(-1), dtype=torch.int64)
                 images = torch.cat((images, images_))
                 labels = torch.cat((labels, labels_))
             dataset = sy.BaseDataset(
@@ -109,19 +109,26 @@ def test(model, test_loader, round_no, args):
 
 
 
-def federate_data(splitted_data, workers):
-    idx = [ii for ii in range(len(splitted_data['y']))]
+def federate_data(splitted_datasets, workers):
+    idx = [ii for ii in range(len(splitted_datasets))]
     random.shuffle(idx)
-    federated_splitted_data = defaultdict(lambda: [])
-    for ii, ww_id in enumerate(workers_idx):
+    federated_datasets = defaultdict(lambda: [])
+    for ii, (ww_id, worker) in enumerate(workers.items()):
+        images, labels = [], []
         # Two shard should be given to each worker
         for shard_idx in range(2):
-            shard = dict()
-            shard['x'] = splitted_data['x'][ii*2 + shard_idx]
-            shard['y'] = splitted_data['y'][ii*2 + shard_idx]
-            federated_splitted_data[ww_id].append(shard)
-    logging.info("Federated data to {} users..... OK".format(len(federated_splitted_data)))
-    return federated_splitted_data     
+            images.append(splitted_datasets[ii*2 + shard_idx].data)
+            labels.append(splitted_datasets[ii*2 + shard_idx].targets)
+        images = torch.cat((images[0], images[1]))
+        labels = torch.cat((labels[0], labels[1]))
+        federated_datasets[ww_id] = FLCustomDataset(
+            images,
+            labels, 
+            transform=transforms.Compose([
+                transforms.ToTensor()])).federate([worker])
+
+    logging.info("Federated data to {} users..... OK".format(len(federated_datasets)))
+    return federated_datasets     
 
 
 def wieghted_avg_model(weights, models_state_dict):
@@ -145,7 +152,7 @@ def save_model(model, name):
     logging.debug("Saving the model into " + full_path)
     torch.save(model, full_path)
     
-def train_workers(federated_dataloader, workers_model, round_no, args):
+def train_workers(fed_dataloaders, workers_model, round_no, args):
     workers_opt = {}
     for ww_id, ww_model in workers_model.items():
         if ww_model.location is None \
@@ -154,7 +161,7 @@ def train_workers(federated_dataloader, workers_model, round_no, args):
         workers_opt[ww_id] = torch.optim.SGD(
             params=ww_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     for epoch_no in range(args.epochs):
-        for ww_id, fed_dataloader in federated_dataloader.items():
+        for ww_id, fed_dataloader in fed_dataloaders.items():
             if ww_id in workers_model.keys():
                 for batch_idx, (data, target) in enumerate(fed_dataloader):
                     worker_id = data.location.id
@@ -234,23 +241,35 @@ if __name__ == '__main__':
     if args.local_log:
         utils.write_to_file(args.log_dir, "all_users", workers_idx)
 
-    train_raw_data = utils.preprocess_mnist(
-        utils.load_mnist_data_train(
-            configs['mnist']['path'], 
-            configs['mnist']['import_fraction']))
+    train_dataset = utils.load_mnist_data_train()
 
     # Let's create the dataset and normalize the data globally
-    train_dataset = utils.get_mnist_dataset(train_raw_data)
+    # train_dataset = utils.get_mnist_dataset(train_raw_data)
     
     # Now sort the dataset and distribute among users
     sorted_train_data = utils.sort_mnist_dataset(train_dataset)
-    splitted_train_data = utils.split_raw_data(sorted_train_data, args.shards_num)
-    federated_train_data = federate_data(splitted_train_data, workers)
+    splitted_train_data = utils.split_dataset(
+        sorted_train_data, int(len(sorted_train_data) / args.shards_num))
+    federated_train_datasets = federate_data(splitted_train_data, workers)
     
-    fed_train_datasets = None
-    if arguments["--no-attack"]:
-        logging.info("No Attack will be performed.")
-        fed_train_datasets = create_mnist_federated_datasets(federated_train_data, workers)
+    
+    # fed_train_datasets = None
+    # if arguments["--no-attack"]:
+    #     logging.info("No Attack will be performed.")
+    #     fed_train_datasets = create_mnist_federated_datasets(federated_train_data, workers)
+    
+    
+    # workers_list = []
+    # for ii, jj in workers.items():
+    #     workers_list.append(jj)
+
+    # federated_datasets = dict()
+    # for ii, (ww_id, worker) in enumerate(workers.items()):
+    #     splitted_train_data[ii].federate(workers_list)
+
+    # federated_datasets['worker_0'].federate(workers_list)
+    # fed_train_dataloaders = sy.FederatedDataLoader(
+    #     splitted_train_data[0].federate(workers_list), batch_size=args.batch_size, shuffle=False)
 
     # # elif arguments["--attack"] == "99": # Combines
     # #     logging.info("Perform combined attacks 1, 2, 3")
@@ -272,18 +291,19 @@ if __name__ == '__main__':
     # #         ), workers_idx_to_be_used)
 
     fed_train_dataloaders = dict()
-    for ww_id, fed_dataset in fed_train_datasets.items():
+    for ww_id, fed_dataset in federated_train_datasets.items():
         dataloader = sy.FederatedDataLoader(
             fed_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True)
         fed_train_dataloaders[ww_id] = dataloader
 
-    test_raw_data = utils.load_mnist_data_test(configs['mnist']['path'])
-    test_dataset = utils.get_mnist_dataset(test_raw_data)
+    test_dataset = utils.load_mnist_data_test(configs['mnist']['path'])
     test_dataloader = utils.get_dataloader(
         test_dataset, args.test_batch_size, shuffle=True, drop_last=False)
 
     server_model = FLNet().to(args.device)
     selected_users_num = configs['mnist']['selected_users_num']
+    
+    
     
     for round_no in range(args.rounds):
         # select selected_users_num users randomly
