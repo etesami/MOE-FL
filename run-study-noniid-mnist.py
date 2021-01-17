@@ -4,6 +4,7 @@ Usage:
     run-study-niid-mnist.py\n\t\t(--avg | --opt)\n\t\t--attack=ATTACK-TYPE --output-prefix=NAME [--log] [--nep-log]
 """
 from docopt import docopt
+import os
 import torch
 import random
 import neptune
@@ -23,14 +24,21 @@ from federated_learning.helper import utils
 CONFIG_PATH = 'configs/defaults.yml'
 
 ############ TEMPORARILY ################
-# arguments = docopt(__doc__)
+arguments = docopt(__doc__)
 ############ TEMPORARILY ################
-arguments = dict()
-arguments['--log'] = False
+# arguments = dict()
+# arguments['--log'] = False
 arguments['--nep-log'] = False
-arguments['--output-prefix'] = ""
-arguments["--no-attack"] = True
+# arguments['--output-prefix'] = "tmp"
+# arguments["--no-attack"] = True
+# arguments['--avg'] = True
 ############ TEMPORARILY ################
+
+
+def print_model(model):
+    for ii, jj in model.named_parameters():
+        if ii == "conv1.bias":
+            print(jj.data[:7])
 
 
 def create_workers(hook, workers_idx):
@@ -68,6 +76,38 @@ def create_mnist_federated_datasets(raw_dataset, workers):
         logging.info("Creating the federated dataset for MNIST...... OK")
         return fed_datasets
         
+def test(model, test_loader, round_no, args):
+    model.eval()
+    test_loss = 0
+    correct = 0
+    print()
+    with torch.no_grad():
+        for data, target in tqdm(test_loader):
+            data, target = data.to(args.device), target.to(args.device, dtype=torch.int64)
+            output = model(data)
+            test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+            pred = output.argmax(1, keepdim=True)  # get the index of the max log-probability
+            correct += pred.eq(target.view_as(pred)).sum().item()
+
+    test_loss /= len(test_loader.dataset)
+    test_acc = 100. * correct / len(test_loader.dataset)
+
+    if args.neptune_log:
+        neptune.log_metric("test_loss", test_loss)
+        neptune.log_metric("test_acc", test_acc)
+    if args.local_log:
+        file = open(args.log_dir +  "accuracy", "a")
+        TO_FILE = '{} {} "{{/*Accuracy:}}\\n{}%" {}\n'.format(
+            round_no, test_loss, test_acc, test_acc)
+        file.write(TO_FILE)
+        file.close()
+    
+    logging.info('Test Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        test_loss, correct, len(test_loader.dataset), test_acc))
+    print()
+    return test_acc
+
+
 
 def federate_data(splitted_data, workers):
     idx = [ii for ii in range(len(splitted_data['y']))]
@@ -83,6 +123,27 @@ def federate_data(splitted_data, workers):
     logging.info("Federated data to {} users..... OK".format(len(federated_splitted_data)))
     return federated_splitted_data     
 
+
+def wieghted_avg_model(weights, models_state_dict):
+    layers = dict()
+    for layer_name, layer in models_state_dict[list(models_state_dict.keys())[0]].items():
+        layer_ = torch.tensor([0.0] * torch.numel(layer), dtype=torch.float32).view(layer.shape)
+        layers[layer_name] = layer_
+    for ii, (ww_id, model_state) in enumerate(models_state_dict.items()):
+        for layer_no, (layer_name, layer_data) in enumerate(model_state.items()):
+            layers[layer_name] += weights[ii] * layer_data
+
+    return layers
+
+
+def save_model(model, name):
+    parent_dir = "{}{}".format(args.log_dir, "models")
+    if not os.path.isdir(parent_dir):
+        logging.debug("Create a directory for model(s).")
+        os.mkdir(parent_dir)
+    full_path = "{}/{}".format(parent_dir, name)
+    logging.debug("Saving the model into " + full_path)
+    torch.save(model, full_path)
     
 def train_workers(federated_dataloader, workers_model, round_no, args):
     workers_opt = {}
@@ -140,7 +201,9 @@ if __name__ == '__main__':
         configs['log']['interval'],
         configs['log']['level'],
         configs['log']['format'],
-        configs['log']['root_output_dir'] + "/" + arguments['--output-prefix'],
+        utils.make_output_dir(
+            configs['log']['root_output_dir'], arguments['--output-prefix']
+            ) if arguments['--log'] else "",
         True if arguments['--nep-log'] else False,
         True if arguments['--log'] else False
     )
@@ -156,7 +219,6 @@ if __name__ == '__main__':
     coloredlogs.install(level=args.log_level, fmt=args.log_format)
     output_dir = None
     if args.local_log:
-        output_dir = utils.make_output_dir(args.log_dir)
         utils.save_configs(args.log_dir, configs)
 
     # Neptune logging initialization
@@ -236,36 +298,37 @@ if __name__ == '__main__':
         for worker_id in workers_to_be_used:
             workers_model[worker_id] = deepcopy(server_model)
         
+        print()
         train_workers(fed_train_dataloaders, workers_model, round_no, args)
         
-        # # Find the best weights and update the server model
-        # weights = None
-        # if arguments['--avg']:
-        #     # Each worker takes two shards of 300 random.samples. Total of 600 random.samples
-        #     # per worker. Total number of random.samples is 60000.
-        #     weights = [600.0 / 60000] * selected_users_num
-        # # elif arguments['--opt']:
-        # #     # weights = fl.find_best_weights(trained_server_model, workers_idx)
-        # #     weights = fl.find_best_weights(trained_w0_model, workers_idx)
-        
-        # # if args.local_log:
-        # #     fl.save_workers_model(workers_to_be_used, str(round_no))
-        #     # fl.save_model(
-        #     #     fl.get_average_model(trusted_idx),
-        #     #     "R{}_{}".format(round_no, "avg_trusted_model")
-        #     # )
-    
-        # logging.info("Update server model in this round...")
-        # fl.update_models(["server"], fl.wieghted_avg_model(weights, workers_model))
+        # Find the best weights and update the server model
+        weights = None
+        if arguments['--avg']:
+            # Each worker takes two shards of 300 random.samples. Total of 600 random.samples
+            # per worker. Total number of random.samples is 60000.
+            weights = [600.0 / 60000] * selected_users_num
+        # elif arguments['--opt']:
+        #     # weights = fl.find_best_weights(trained_server_model, workers_idx)
+        #     weights = fl.find_best_weights(trained_w0_model, workers_idx)
 
-        # # Apply the server model to the test dataset
-        # fl.test(fl.server_model, test_dataloader, "server", round_no)
+        models_state = dict()
+        for worker_id, worker_model in workers_model.items():
+            if worker_model.location is not None:
+                worker_model.get()
+            models_state[worker_id] = worker_model.state_dict()
+        weighted_avg_state = wieghted_avg_model(weights, models_state)
+        logging.info("Update server model in this round...")
+        server_model.load_state_dict(weighted_avg_state)
 
-        # if args.local_log:
-        #     fl.save_model(
-        #         fl.server_model, 
-        #         "R{}_{}".format(round_no, "server_model")
-        #     )
+        # Apply the server model to the test dataset
+        logging.info("Starting model evaluation on the test dataset...")
+        test(server_model, test_dataloader, round_no, args)
+
+        if args.local_log:
+            save_model(
+                server_model, 
+                "R{}_{}".format(round_no, "server_model")
+            )
 
         print("")
-    
+

@@ -1,6 +1,6 @@
 runtime:
-    epochs: 2
-    rounds: 2 
+    epochs: 5
+    rounds: 500
     lr: 0.01
     momentum: 0.5
     batch_size: 20
@@ -28,7 +28,7 @@ data:
 log:
     level: INFO
     interval: 2
-    format: '%(asctime)s [%(levelname)s]: %(message)s'
+    format: '%(asctime)s: %(message)s'
     root_output_dir: "data_output"
     neptune_init: "ehsan/sandbox"
     neptune_exp: "evaluation_01"
