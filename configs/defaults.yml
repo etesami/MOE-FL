@@ -1,21 +1,21 @@
 runtime:
     epochs: 10
-    rounds: 2
+    rounds: 250
     lr: 0.01
     momentum: 0.5
-    batch_size: 10
+    batch_size: 20
     random_seed: 12345
     weight_decay: 0.0
-    test_batch_size: 10
+    test_batch_size: 20
     use_cuda: False
 server:
     data_fraction: 30 # Fraction of data that will be shared with the server
     save_model: False
 mnist:
     shards_num: 200 # With 200 shards, there would be 300 samples per each shards
-    import_fraction: 1 # Out of 1, how much of data is imported
-    selected_users_num: 10 # Percentage of users involved in each iteration
-    total_number_users: 100 # Total number of users to partion data among them
+    shards_per_worker_num: 2
+    selected_users_num: 10 
+    total_users_num: 100 # Total number of users to partion data among them
     path: "/home/ubuntu/data/MNIST"
 femnist:
     # femnist_users_num: 30 # Total users participating in training and are compared with w0 model

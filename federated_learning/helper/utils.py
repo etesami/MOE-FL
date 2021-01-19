@@ -8,7 +8,7 @@ import h5py
 import syft as sy
 from tqdm import tqdm
 from os import mkdir
-from random import sample, choice
+from random import sample, choice, shuffle
 from time import strftime
 from math import floor
 from collections import defaultdict
@@ -149,7 +149,7 @@ def split_dataset(dataset, samples_per_shards_num):
                 splitted_data[ii],
                 splitted_targets[ii],
                 transform=transforms.Compose([
-                    transforms.ToTensor()])
+                    transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
             )
         )
     return splitted_datasets
@@ -349,7 +349,7 @@ def sort_mnist_dataset(dataset):
         dataset.data[sorted_index],
         dataset.targets[sorted_index],
         transform=transforms.Compose([
-            transforms.ToTensor()])
+            transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         )
     # sorted_dataset = dict()
     # sorted_dataset['x'] = dataset.data[sorted_index]
@@ -429,6 +429,53 @@ def perfrom_attack(dataset, attack_id, workers_idx, evasdropers_idx, percentage=
         
     return FLCustomDataset(data_x, data_y)
 
+def map_shards_to_worker(splitted_datasets, workers, num_shards_per_worker):
+    idx = [ii for ii in range(len(splitted_datasets))]
+    shuffle(idx)
+    federated_datasets = defaultdict(lambda: [])
+    for ii, (ww_id, worker) in enumerate(workers.items()):
+        images, labels = [], []
+        # Two shard should be given to each worker
+        for shard_idx in range(num_shards_per_worker):
+            images.append(splitted_datasets[ii*num_shards_per_worker + shard_idx].data)
+            labels.append(splitted_datasets[ii*num_shards_per_worker + shard_idx].targets)
+        images = cat((images[0], images[1]))
+        labels = cat((labels[0], labels[1]))
+        federated_datasets[ww_id] = FLCustomDataset(
+            images,labels, 
+            transform=transforms.Compose([
+                transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]))
+                
+    logging.info("Federated data to {} users..... OK".format(len(federated_datasets)))
+    return federated_datasets     
+
+def merge_and_shuffle_dataset(datasets):
+    images, labels = [], []
+    for dataset in datasets:
+        images.append(dataset.data)
+        labels.append(dataset.targets)
+    images, labels = cat(images), cat(labels)
+    return shuffle_dataset(FLCustomDataset(
+        images, labels, transform=transforms.Compose(
+            [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])))
+
+    
+def shuffle_dataset(dataset):
+    new_data, new_labels = shuffle_data_labels(dataset.data, dataset.targets)
+    return FLCustomDataset(
+        new_data, new_labels, 
+        transform=transforms.Compose([
+            transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]))
+
+
+def shuffle_data_labels(data, labels):
+    # data.shape [x, 28, 28]
+    # labels.shape [x]
+    rand_idx = randperm(len(labels))
+    new_data = data[rand_idx]
+    new_labels = labels[rand_idx]
+    return new_data, new_labels
+    
 
 def attack_shuffle_pixels(data):
     for ii in range(len(data)):

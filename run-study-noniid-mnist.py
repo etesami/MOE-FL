@@ -12,6 +12,7 @@ import syft as sy
 import numpy as np
 from tqdm import tqdm
 from copy import deepcopy
+import torchvision
 import coloredlogs, logging
 from torchvision import transforms
 from collections import defaultdict
@@ -21,24 +22,27 @@ from federated_learning.FLCustomDataset import FLCustomDataset
 from federated_learning.FederatedLearning import FederatedLearning
 from federated_learning.Arguments import Arguments
 from federated_learning.helper import utils
+from syft.frameworks.torch.fl.utils import federated_avg
 CONFIG_PATH = 'configs/defaults.yml'
 
 ############ TEMPORARILY ################
-# arguments = docopt(__doc__)
+arguments = docopt(__doc__)
 ############ TEMPORARILY ################
-arguments = dict()
-arguments['--log'] = False
-arguments['--output-prefix'] = "tmp"
-arguments["--no-attack"] = True
-arguments['--avg'] = True
+# arguments = dict()
+# arguments['--log'] = False
+# arguments['--output-prefix'] = "tmp"
+# arguments["--no-attack"] = True
+# arguments['--avg'] = True
 arguments['--nep-log'] = False
 ############ TEMPORARILY ################
 
 
-def print_model(model):
+def print_model(name, model):
+    print()
     for ii, jj in model.named_parameters():
         if ii == "conv1.bias":
-            print(jj.data[:7])
+            print("{}: {}".format(name, jj.data[:7]))
+    print()
 
 
 def create_workers(hook, workers_idx):
@@ -50,32 +54,7 @@ def create_workers(hook, workers_idx):
     logging.info("Creating {} workers..... OK".format(len(workers_idx)))
     return workers
 
-def create_mnist_federated_datasets(raw_dataset, workers):
-        """
-        raw_datasets (dict)
-        ex.
-            data: raw_datasets['worker_1']['x']
-            label: raw_datasets['worker_1']['y']
-        """
-        logging.info("Creating the federated dataset for MNIST...")
-        fed_datasets = dict()
-        for ww_id, ww_data in raw_dataset.items():
-            images = torch.tensor([], dtype=torch.float32)
-            labels = torch.tensor([], dtype=torch.int64)
-            for shard in ww_data:
-                images_ = torch.tensor(shard['x'], dtype=torch.float32)
-                labels_ = torch.tensor(shard['y'].view(-1), dtype=torch.int64)
-                images = torch.cat((images, images_))
-                labels = torch.cat((labels, labels_))
-            dataset = sy.BaseDataset(
-                    images,
-                    labels,
-                    transform=transforms.Compose([transforms.ToTensor()])
-                ).federate([workers[ww_id]])
-            fed_datasets[ww_id] = dataset
-        logging.info("Creating the federated dataset for MNIST...... OK")
-        return fed_datasets
-        
+
 def test(model, test_loader, round_no, args):
     model.eval()
     test_loss = 0
@@ -108,29 +87,6 @@ def test(model, test_loader, round_no, args):
     return test_acc
 
 
-
-def federate_data(splitted_datasets, workers):
-    idx = [ii for ii in range(len(splitted_datasets))]
-    random.shuffle(idx)
-    federated_datasets = defaultdict(lambda: [])
-    for ii, (ww_id, worker) in enumerate(workers.items()):
-        images, labels = [], []
-        # Two shard should be given to each worker
-        for shard_idx in range(2):
-            images.append(splitted_datasets[ii*2 + shard_idx].data)
-            labels.append(splitted_datasets[ii*2 + shard_idx].targets)
-        images = torch.cat((images[0], images[1]))
-        labels = torch.cat((labels[0], labels[1]))
-        federated_datasets[ww_id] = FLCustomDataset(
-            images,
-            labels, 
-            transform=transforms.Compose([
-                transforms.ToTensor()])).federate([worker])
-
-    logging.info("Federated data to {} users..... OK".format(len(federated_datasets)))
-    return federated_datasets     
-
-
 def wieghted_avg_model(weights, models_state_dict):
     layers = dict()
     for layer_name, layer in models_state_dict[list(models_state_dict.keys())[0]].items():
@@ -152,44 +108,80 @@ def save_model(model, name):
     logging.debug("Saving the model into " + full_path)
     torch.save(model, full_path)
     
-def train_workers(fed_dataloaders, workers_model, round_no, args):
-    workers_opt = {}
-    for ww_id, ww_model in workers_model.items():
-        if ww_model.location is None \
-                or ww_model.location.id != ww_id:
-            ww_model.send(workers[ww_id])
+
+def train_workers(federated_train_loader, models, workers_id, round_no, args):
+    workers_opt = dict()
+    for ww_id in workers_id:
         workers_opt[ww_id] = torch.optim.SGD(
-            params=ww_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    for epoch_no in range(args.epochs):
-        for ww_id, fed_dataloader in fed_dataloaders.items():
-            if ww_id in workers_model.keys():
-                for batch_idx, (data, target) in enumerate(fed_dataloader):
-                    worker_id = data.location.id
-                    worker_opt = workers_opt[worker_id]
-                    workers_model[worker_id].train()
-                    data, target = data.to(args.device), target.to(args.device)
-                    worker_opt.zero_grad()
-                    output = workers_model[worker_id](data)
+            params=models[ww_id].parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    for epoch in range(args.epochs):
+        for ww_id, fed_dataloader in federated_train_loader.items():
+            if ww_id in workers_id:
+                for batch_idx, (data, target) in enumerate(fed_dataloader): 
+                    ww_id = data.location.id
+                    model = models[ww_id]
+                    model.train()
+                    model.send(data.location)
+                    data, target = data.to("cpu"), target.to("cpu")
+                    workers_opt[ww_id].zero_grad()
+                    output = model(data)
                     loss = F.nll_loss(output, target)
                     loss.backward()
-                    worker_opt.step()
-
+                    workers_opt[ww_id].step()
+                    model.get() # <-- NEW: get the model back
                     if batch_idx % args.log_interval == 0:
-                        loss = loss.get()
+                        loss = loss.get() # <-- NEW: get the loss back
                         if args.neptune_log:
-                            neptune.log_metric("train_loss_" + str(worker_id), loss)
+                            neptune.log_metric("train_loss_" + str(ww_id), loss)
                         if args.local_log:
-                            file = open(args.log_dir + str(worker_id) + "_train", "a")
-                            TO_FILE = '{} {} {} {} {}\n'.format(round_no, epoch_no, batch_idx, worker_id, loss)
+                            file = open(args.log_dir + str(ww_id) + "_train", "a")
+                            TO_FILE = '{} {} {} {} {}\n'.format(round_no, epoch, batch_idx, ww_id, loss)
                             file.write(TO_FILE)
                             file.close()
                         logging.info('Train Round: {}, Epoch: {} [{}] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                            round_no, epoch_no, worker_id, batch_idx, 
+                            round_no, epoch, ww_id, batch_idx, 
                             batch_idx * fed_dataloader.batch_size, 
                             len(fed_dataloader) * fed_dataloader.batch_size,
                             100. * batch_idx / len(fed_dataloader), loss.item()))
-    print()
+
     
+def train_workers_1(fed_dataloader, models, workers_id, round_no, args):
+    workers_opt = dict()
+    for ww_id in workers_id:
+        workers_opt[ww_id] = torch.optim.SGD(
+            params=models[ww_id].parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    for epoch in range(args.epochs):
+        for batch_idx, (data, target) in enumerate(fed_dataloader): 
+            ww_id = data.location.id
+            if ww_id in workers_id:
+                model = models[ww_id]
+                model.train()
+                model.send(data.location)
+                data, target = data.to("cpu"), target.to("cpu")
+                workers_opt[ww_id].zero_grad()
+                output = model(data)
+                loss = F.nll_loss(output, target)
+                loss.backward()
+                workers_opt[ww_id].step()
+                model.get() # <-- NEW: get the model back
+                if batch_idx % args.log_interval == 0:
+                    loss = loss.get() # <-- NEW: get the loss back
+                    if args.neptune_log:
+                        neptune.log_metric("train_loss_" + str(ww_id), loss)
+                    if args.local_log:
+                        file = open(args.log_dir + str(ww_id) + "_train", "a")
+                        TO_FILE = '{} {} {} {} {}\n'.format(round_no, epoch, batch_idx, ww_id, loss)
+                        file.write(TO_FILE)
+                        file.close()
+                    logging.info('Train Round: {}, Epoch: {} [{}] [{}: {}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                        round_no, epoch, ww_id, batch_idx, 
+                        batch_idx * fed_dataloader.batch_size, 
+                        len(fed_dataloader) * fed_dataloader.batch_size,
+                        100. * batch_idx / len(fed_dataloader), loss.item()))
+            else:
+                break
+
+
 if __name__ == '__main__':
     # Initialization
     configs = utils.load_config(CONFIG_PATH)
@@ -202,6 +194,7 @@ if __name__ == '__main__':
         configs['runtime']['momentum'],
         configs['runtime']['weight_decay'],
         configs['mnist']['shards_num'],
+        configs['mnist']['shards_per_worker_num'],
         configs['runtime']['use_cuda'],
         torch.device("cuda" if configs['runtime']['use_cuda'] else "cpu"),
         configs['runtime']['random_seed'],
@@ -233,7 +226,7 @@ if __name__ == '__main__':
         neptune.init(configs['log']['neptune_init'])
         neptune.create_experiment(name = configs['log']['neptune_exp'])
     
-    total_num_workers = configs['mnist']['total_number_users']
+    total_num_workers = configs['mnist']['total_users_num']
     logging.info("Total number of users: {}".format(total_num_workers))
 
     workers_idx = ["worker_" + str(i) for i in range(total_num_workers)]
@@ -242,107 +235,70 @@ if __name__ == '__main__':
         utils.write_to_file(args.log_dir, "all_users", workers_idx)
 
     train_dataset = utils.load_mnist_data_train()
-
-    # Let's create the dataset and normalize the data globally
-    # train_dataset = utils.get_mnist_dataset(train_raw_data)
     
     # Now sort the dataset and distribute among users
-    sorted_train_data = utils.sort_mnist_dataset(train_dataset)
-    splitted_train_data = utils.split_dataset(
-        sorted_train_data, int(len(sorted_train_data) / args.shards_num))
-    federated_train_datasets = federate_data(splitted_train_data, workers)
-    
-    
-    # fed_train_datasets = None
-    # if arguments["--no-attack"]:
-    #     logging.info("No Attack will be performed.")
-    #     fed_train_datasets = create_mnist_federated_datasets(federated_train_data, workers)
-    
-    
-    # workers_list = []
-    # for ii, jj in workers.items():
-    #     workers_list.append(jj)
+    sorted_train_dataset = utils.sort_mnist_dataset(train_dataset)
+    splitted_train_dataset = utils.split_dataset(
+        sorted_train_dataset, int(len(sorted_train_dataset) / args.shards_num))
+    mapped_train_datasets = utils.map_shards_to_worker(splitted_train_dataset, workers, args.shards_per_worker_num)
 
-    # federated_datasets = dict()
-    # for ii, (ww_id, worker) in enumerate(workers.items()):
-    #     splitted_train_data[ii].federate(workers_list)
-
-    # federated_datasets['worker_0'].federate(workers_list)
-    # fed_train_dataloaders = sy.FederatedDataLoader(
-    #     splitted_train_data[0].federate(workers_list), batch_size=args.batch_size, shuffle=False)
-
-    # # elif arguments["--attack"] == "99": # Combines
-    # #     logging.info("Perform combined attacks 1, 2, 3")
-    # #     dataset = utils.perfrom_attack_femnist(
-    # #             raw_train_data, 1, workers_idx_to_be_used, eavesdroppers_idx)
-    # #     # dataset = utils.perfrom_attack_femnist(
-    # #     #         dataset, 2, workers_idx_to_be_used, eavesdroppers_idx)
-    # #     dataset = utils.perfrom_attack_femnist(
-    # #             dataset, 3, workers_idx_to_be_used, eavesdroppers_idx)
-    # #     fed_train_datasets = fl.create_femnist_fed_datasets(dataset, workers_idx_to_be_used)
-    # # else:
-    # #     logging.info("Perform attack type: {}".format(arguments["--attack"]))
-    # #     fed_train_datasets = fl.create_femnist_fed_datasets(
-    # #         utils.perfrom_attack_femnist(
-    # #             raw_train_data, 
-    # #             int(arguments["--attack"]),
-    # #             workers_idx_to_be_used,
-    # #             eavesdroppers_idx
-    # #         ), workers_idx_to_be_used)
-
-    fed_train_dataloaders = dict()
-    for ww_id, fed_dataset in federated_train_datasets.items():
-        dataloader = sy.FederatedDataLoader(
-            fed_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True)
-        fed_train_dataloaders[ww_id] = dataloader
+    # federated_train_loader = dict()
+    # for ww_id, fed_dataset in federated_train_datasets.items():
+    # federated_train_loader = sy.FederatedDataLoader(
+    #     train_dataset.federate(list(workers.values())), batch_size=args.batch_size, shuffle=True, drop_last=False)
+    federated_train_loader = dict()
+    for ww_id, fed_dataset in mapped_train_datasets.items():
+        federated_train_loader[ww_id] = sy.FederatedDataLoader(
+            fed_dataset.federate([workers[ww_id]]), batch_size=args.batch_size, shuffle=True, drop_last=False)
 
     test_dataset = utils.load_mnist_data_test(configs['mnist']['path'])
-    test_dataloader = utils.get_dataloader(
+    test_loader = utils.get_dataloader(
         test_dataset, args.test_batch_size, shuffle=True, drop_last=False)
 
     server_model = FLNet().to(args.device)
+    print_model('Initial Server Model', server_model)
+    # selected_users_num = 2
     selected_users_num = configs['mnist']['selected_users_num']
-    
-    
-    
+
     for round_no in range(args.rounds):
-        # select selected_users_num users randomly
         workers_to_be_used = random.sample(workers_idx, selected_users_num)
-        logging.info("Some of selected users for this round: {}".format(workers_to_be_used[:3]))
+        # workers_to_be_used = [list(workers.keys())[0], list(workers.keys())[1]]
+        workers_model = dict()
+        for ww_id in workers_to_be_used:
+            workers_model[ww_id] = deepcopy(server_model)
+
+        logging.info("Some of selected users for this round: {}".format(workers_to_be_used))
+        print_model("worker before training", list(workers_model.values())[0])
         if args.local_log:
             utils.write_to_file(args.log_dir, "selected_workers", "R{}: {}".format(
                 round_no, workers_to_be_used))
-
-        logging.info("Update workers model in this round...")
-        workers_model = dict()
-        for worker_id in workers_to_be_used:
-            workers_model[worker_id] = deepcopy(server_model)
-        
-        print()
-        train_workers(fed_train_dataloaders, workers_model, round_no, args)
-        
+        train_workers(federated_train_loader, workers_model, workers_to_be_used, round_no, args)
+        print_model("worker after training", list(workers_model.values())[0])
         # Find the best weights and update the server model
         weights = None
         if arguments['--avg']:
             # Each worker takes two shards of 300 random.samples. Total of 600 random.samples
             # per worker. Total number of random.samples is 60000.
-            weights = [600.0 / 60000] * selected_users_num
+            # weights = [600.0 / 60000] * selected_users_num
+            weights = [1.0 / selected_users_num] * selected_users_num
         # elif arguments['--opt']:
         #     # weights = fl.find_best_weights(trained_server_model, workers_idx)
         #     weights = fl.find_best_weights(trained_w0_model, workers_idx)
-
+        print_model("server before update", server_model)
         models_state = dict()
         for worker_id, worker_model in workers_model.items():
             if worker_model.location is not None:
                 worker_model.get()
             models_state[worker_id] = worker_model.state_dict()
+
         weighted_avg_state = wieghted_avg_model(weights, models_state)
         logging.info("Update server model in this round...")
         server_model.load_state_dict(weighted_avg_state)
+        print_model("server after update", server_model)
 
         # Apply the server model to the test dataset
         logging.info("Starting model evaluation on the test dataset...")
-        test(server_model, test_dataloader, round_no, args)
+        test(server_model, test_loader, round_no, args)
 
         if args.local_log:
             save_model(
@@ -351,4 +307,5 @@ if __name__ == '__main__':
             )
 
         print("")
-
+    
+    
