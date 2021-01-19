@@ -1,5 +1,5 @@
 runtime:
-    epochs: 10
+    epochs: 5
     rounds: 250
     lr: 0.01
     momentum: 0.5

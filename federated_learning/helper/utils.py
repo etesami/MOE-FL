@@ -75,57 +75,6 @@ def extract_data(raw_data, workers_idx):
     return data
 
 
-################ Leaf related functions #################
-
-def read_raw_data(data_path):
-    logging.debug("Reading raw data from {}".format(data_path))
-    groups = []
-    data = defaultdict(lambda : None)
-
-    files = os.listdir(data_path)
-    files = [f for f in files if f.endswith('.json')]
-    
-    counter = 1
-    for f in files:
-        logging.info("Loading {} out of {} files...".format(counter, len(files)))
-        file_path = os.path.join(data_path, f)
-        with open(file_path, 'r') as inf:
-            cdata = json.load(inf)
-        data.update(cdata['user_data'])
-        counter += 1
-
-    return data
-
-
-def preprocess_leaf_data(data_raw, min_num_samples=100, only_digits=True):
-    logging.info("Start processing of femnist data...")
-    processed_data = dict()
-    for user, user_data in data_raw.items():  
-        data_y = np.array(user_data['y'], dtype = np.int64).reshape(-1 , 1)
-        filtered_idx = None
-        if only_digits:
-            filtered_idx = np.where(data_y < 10)[0]
-        else:
-            filtered_idx = np.where(data_y)[0]
-        if len(filtered_idx) < min_num_samples:
-            continue
-        data_x = np.array(user_data['x'], dtype = np.float32).reshape(-1 , 28, 28)
-        processed_data[user] = dict()
-        processed_data[user]['x'] = data_x[filtered_idx]
-        processed_data[user]['y'] = data_y[filtered_idx]
-    return processed_data
-
-
-def load_leaf_train(data_dir):
-    logging.info("Loading train dataset from {}".format(data_dir))
-    return read_raw_data(data_dir + "/train")
-
-
-def load_leaf_test(data_dir):
-    logging.info("Loading test dataset from {}".format(data_dir))
-    return read_raw_data(data_dir + "/test")
-
-
 def get_flattened_data(data):
     data_flattened_x = np.array([], dtype = np.float32).reshape(0, 28 * 28)
     tmp_array = [np.array(data_['x'], dtype = np.float32).reshape(-1, 28 * 28) for data_ in data.values()]
@@ -185,41 +134,6 @@ def dataset_info(dataset):
             data_flatted_x.max()))
     print("-"*5)
 
-
-def perfrom_attack_femnist(raw_data, attack_id, workers_idx, evasdropers_idx, percentage=100):
-    """ 
-    Args:
-        dataset (FLCustomDataset): 
-        attack_id (int):
-            1: shuffle
-            2: negative_value
-            3: labels
-        
-        evasdropers_idx (list(int))
-        percentage (int): Amount of data affected in each eavesdropper
-    Returns:
-        dataset (FLCustomDataset)
-    """  
-    logging.info("Attack ID: {}".format(attack_id))
-    logging.info("Performing attack on {}".format(evasdropers_idx))
-    for worker_id in workers_idx:
-        if worker_id in evasdropers_idx:
-            if attack_id == 1:
-                logging.debug("Performing attack [shuffle pixels] for user {}...".format(worker_id))
-                raw_data[worker_id].update({'x': attack_shuffle_pixels(raw_data[worker_id]['x'])})
-            elif attack_id == 2:
-                logging.debug("Performing attack [negative of pixels] for user {}...".format(worker_id))
-                raw_data[worker_id]['x'] = attack_negative_pixels(raw_data[worker_id]['x'])
-            elif attack_id == 3:
-                logging.debug("Performing attack [shuffle labels] for user {}...".format(worker_id))
-                raw_data[worker_id]['y'] = attack_shuffle_labels(raw_data[worker_id]['y'], percentage)
-            elif attack_id == 4:
-                logging.debug("Performing attack [black pixels] for user {}...".format(worker_id))
-                raw_data[worker_id]['x'] = attack_black_pixels(raw_data[worker_id]['x'])
-            else:
-                logging.debug("NOT EXPECTED: NO VALID ATTACK ID!")
-
-    return raw_data
 
 ################ MNIST related functions #################
 
@@ -316,25 +230,6 @@ def load_mnist_data_test(data_dir):
 #     return dataset
 
 
-# def sort_mnist(dataset):
-#     """ 
-#     Args:
-#         dataset (dict of str: numpy array):
-
-#     Returns:
-        
-#     """ 
-#     logging.info("Sorting the MNIST dataset based on labels.")
-#     # dataset['x'] images
-#     # dataset['y'] labels
-#     sorted_index = sorted(range(len(dataset['y'])), key=lambda k: dataset['y'][k])
-#     sorted_dataset = dict()
-#     sorted_dataset['x'] = dataset['x'][sorted_index]
-#     sorted_dataset['y'] = dataset['y'][sorted_index]
-#     logging.info("Sorting the MNIST dataset based on labels..... OK")
-#     return sorted_dataset
-
-
 def sort_mnist_dataset(dataset):
     """ 
     Args:
@@ -351,28 +246,6 @@ def sort_mnist_dataset(dataset):
         transform=transforms.Compose([
             transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         )
-    # sorted_dataset = dict()
-    # sorted_dataset['x'] = dataset.data[sorted_index]
-    # sorted_dataset['y'] = dataset.targets[sorted_index]
-    # logging.info("Sorting the MNIST dataset based on labels..... OK")
-    # return sorted_dataset
-
-
-# def get_mnist_dataset(raw_dataset):
-#     """ 
-#     Args:
-#         raw_dataset (list[numpy array]): 
-#     Returns:
-        
-#     """    
-#     logging.info("Creating MNIST dataset.")
-#     return FLCustomDataset(
-#         raw_dataset['x'],
-#         raw_dataset['y'],
-#         transform=transforms.Compose([
-#             transforms.ToTensor(),
-#             transforms.Normalize((0.1307,), (0.3081,))])
-#     )
 
 
 def get_dataloader(dataset, batch_size, shuffle, drop_last):
@@ -429,6 +302,7 @@ def perfrom_attack(dataset, attack_id, workers_idx, evasdropers_idx, percentage=
         
     return FLCustomDataset(data_x, data_y)
 
+
 def map_shards_to_worker(splitted_datasets, workers, num_shards_per_worker):
     idx = [ii for ii in range(len(splitted_datasets))]
     shuffle(idx)
@@ -448,6 +322,7 @@ def map_shards_to_worker(splitted_datasets, workers, num_shards_per_worker):
                 
     logging.info("Federated data to {} users..... OK".format(len(federated_datasets)))
     return federated_datasets     
+
 
 def merge_and_shuffle_dataset(datasets):
     images, labels = [], []
@@ -497,6 +372,7 @@ def attack_negative_pixels(data):
 def attack_black_pixels(data):
     data = np.zeros([data.shape[0], data.shape[1], data.shape[2]], dtype = np.float32)
     return data
+
 
 def attack_shuffle_labels(targets, percentage):
     num_categories = np.unique(targets)
@@ -559,3 +435,88 @@ def load_femnist_google_train(data_dir):
     file_name = "fed_emnist_digitsonly_train.h5"
     full_path = "{}/{}".format(data_dir, file_name)
     return load_femnist_google_data_digits(full_path)
+
+
+def perfrom_attack_femnist(raw_data, attack_id, workers_idx, evasdropers_idx, percentage=100):
+    """ 
+    Args:
+        dataset (FLCustomDataset): 
+        attack_id (int):
+            1: shuffle
+            2: negative_value
+            3: labels
+        
+        evasdropers_idx (list(int))
+        percentage (int): Amount of data affected in each eavesdropper
+    Returns:
+        dataset (FLCustomDataset)
+    """  
+    logging.info("Attack ID: {}".format(attack_id))
+    logging.info("Performing attack on {}".format(evasdropers_idx))
+    for worker_id in workers_idx:
+        if worker_id in evasdropers_idx:
+            if attack_id == 1:
+                logging.debug("Performing attack [shuffle pixels] for user {}...".format(worker_id))
+                raw_data[worker_id].update({'x': attack_shuffle_pixels(raw_data[worker_id]['x'])})
+            elif attack_id == 2:
+                logging.debug("Performing attack [negative of pixels] for user {}...".format(worker_id))
+                raw_data[worker_id]['x'] = attack_negative_pixels(raw_data[worker_id]['x'])
+            elif attack_id == 3:
+                logging.debug("Performing attack [shuffle labels] for user {}...".format(worker_id))
+                raw_data[worker_id]['y'] = attack_shuffle_labels(raw_data[worker_id]['y'], percentage)
+            elif attack_id == 4:
+                logging.debug("Performing attack [black pixels] for user {}...".format(worker_id))
+                raw_data[worker_id]['x'] = attack_black_pixels(raw_data[worker_id]['x'])
+            else:
+                logging.debug("NOT EXPECTED: NO VALID ATTACK ID!")
+
+    return raw_data
+
+
+def read_raw_data(data_path):
+    logging.debug("Reading raw data from {}".format(data_path))
+    groups = []
+    data = defaultdict(lambda : None)
+
+    files = os.listdir(data_path)
+    files = [f for f in files if f.endswith('.json')]
+    
+    counter = 1
+    for f in files:
+        logging.info("Loading {} out of {} files...".format(counter, len(files)))
+        file_path = os.path.join(data_path, f)
+        with open(file_path, 'r') as inf:
+            cdata = json.load(inf)
+        data.update(cdata['user_data'])
+        counter += 1
+
+    return data
+
+
+def preprocess_leaf_data(data_raw, min_num_samples=100, only_digits=True):
+    logging.info("Start processing of femnist data...")
+    processed_data = dict()
+    for user, user_data in data_raw.items():  
+        data_y = np.array(user_data['y'], dtype = np.int64).reshape(-1 , 1)
+        filtered_idx = None
+        if only_digits:
+            filtered_idx = np.where(data_y < 10)[0]
+        else:
+            filtered_idx = np.where(data_y)[0]
+        if len(filtered_idx) < min_num_samples:
+            continue
+        data_x = np.array(user_data['x'], dtype = np.float32).reshape(-1 , 28, 28)
+        processed_data[user] = dict()
+        processed_data[user]['x'] = data_x[filtered_idx]
+        processed_data[user]['y'] = data_y[filtered_idx]
+    return processed_data
+
+
+def load_leaf_train(data_dir):
+    logging.info("Loading train dataset from {}".format(data_dir))
+    return read_raw_data(data_dir + "/train")
+
+
+def load_leaf_test(data_dir):
+    logging.info("Loading test dataset from {}".format(data_dir))
+    return read_raw_data(data_dir + "/test")

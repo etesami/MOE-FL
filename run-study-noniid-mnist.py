@@ -1,8 +1,9 @@
 """
 Usage: 
-    run-study-niid-mnist.py\n\t\t(--avg | --opt)\n\t\t--no-attack --output-prefix=NAME [--log] [--nep-log]
-    run-study-niid-mnist.py\n\t\t(--avg | --opt)\n\t\t--attack=ATTACK-TYPE --output-prefix=NAME [--log] [--nep-log]
+    run-study-niid-mnist.py\n\t\t--epoch --workers --output-prefix=NAME [--log] [--nep-log]
 """
+# run-study-niid-mnist.py\n\t\t(--avg | --opt)\n\t\t--no-attack --output-prefix=NAME [--log] [--nep-log]
+# run-study-niid-mnist.py\n\t\t(--avg | --opt)\n\t\t--attack=ATTACK-TYPE --output-prefix=NAME [--log] [--nep-log]
 from docopt import docopt
 import os
 import torch
@@ -31,9 +32,9 @@ arguments = docopt(__doc__)
 # arguments = dict()
 # arguments['--log'] = False
 # arguments['--output-prefix'] = "tmp"
-# arguments["--no-attack"] = True
-# arguments['--avg'] = True
-arguments['--nep-log'] = False
+arguments["--no-attack"] = True
+arguments['--avg'] = True
+# arguments['--nep-log'] = False
 ############ TEMPORARILY ################
 
 
@@ -185,6 +186,8 @@ def train_workers_1(fed_dataloader, models, workers_id, round_no, args):
 if __name__ == '__main__':
     # Initialization
     configs = utils.load_config(CONFIG_PATH)
+    configs['runtime']['epochs'] = arguments['--epoch']
+    configs['mnist']['selected_users_num'] = arguments['--workers']
     args = Arguments(
         configs['runtime']['batch_size'],
         configs['runtime']['test_batch_size'],
