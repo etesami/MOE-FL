@@ -5,17 +5,20 @@ import numpy as np
 import logging
 import json
 import h5py
+import cvxpy as cp
 import syft as sy
 from tqdm import tqdm
 from os import mkdir
 from random import sample, choice, shuffle
 from time import strftime
 from math import floor
+from sklearn.preprocessing import MinMaxScaler
 from collections import defaultdict
 from torchvision import transforms, datasets
 from torch.utils.data import DataLoader
-from torch import tensor, cat, float32, int64, randperm, split
+from torch import tensor, cat, float32, int64, randperm, split, unique
 from federated_learning.FLCustomDataset import FLCustomDataset
+from federated_learning.AddGaussianNoise import AddGaussianNoise
 
 def load_config(configPath):
     """ Load configuration files.
@@ -196,7 +199,7 @@ def load_mnist_data_train():
                                 transforms.Normalize((0.1307,), (0.3081,))]))
     
 
-def load_mnist_data_test(data_dir):
+def load_mnist_data_test():
     logging.info("Loading test data from MNIST dataset.")
     # file_path = "/t10k-images-idx3-ubyte"
     # test_data = dict()
@@ -303,6 +306,152 @@ def perfrom_attack(dataset, attack_id, workers_idx, evasdropers_idx, percentage=
     return FLCustomDataset(data_x, data_y)
 
 
+def perform_attack_noniid(datasets, workers_idx, attackers_idx, attack_type, attackers_num):
+    """ 
+    Args:
+        dataset (FLCustomDataset): 
+        attack_id (int):
+            0: No Attack
+            1: shuffle
+            2: negative_value
+            3: labels
+        
+        evasdropers_idx (list(int))
+        percentage (int): Amount of data affected in each eavesdropper
+    Returns:
+        dataset (FLCustomDataset)
+    """  
+    new_datasets = dict()
+    logging.info("Attack ID: {}".format(attack_type))
+    if attack_type == 0:
+        logging.info("Attack ID: {}: No Attack is performed...".format(attack_type))
+        # data = attack_shuffle_pixels(data)
+    else:
+        for ww_id, dataset in datasets.items():
+            data = dataset.data
+            targets = dataset.targets
+            if ww_id in attackers_idx:
+                logging.info("Performing attack on {}...".format(ww_id))
+                if attack_type == 1:
+                    logging.debug("Performing attack [shuffle pixels] on {} workers...".format(attackers_num))
+                    # data = attack_shuffle_pixels(dataset.data)
+                elif attack_type == 2:
+                    logging.debug("Performing attack [negative of pixels] on {} workers...".format(attackers_num))
+                    # data = attack_negative_pixels(dataset.data)
+                elif attack_type == 3:
+                    logging.debug("Performing attack [shuffle labels] on {} workers...".format(attackers_num))
+                    # targets = attack_shuffle_labels_tensor(dataset.targets, 1.0)
+                    new_datasets[ww_id] = FLCustomDataset(
+                        data, targets, transform=transforms.Compose([
+                            transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,)), AddGaussianNoise(0., 2.5),]))
+                else:
+                    logging.debug("NOT EXPECTED: NO VALID ATTACK ID!")
+            else:
+                new_datasets[ww_id] = dataset
+        
+    return new_datasets
+
+
+def normalize_weights(models_dicts):
+    logging.debug("")
+    logging.debug("Normalization of models states ------ ")
+
+    workers_params = {}
+    for worker_id, ww_states in models_dicts.items():
+        workers_params[worker_id] = [[] for i in range(8)]
+        for layer_id, (layer_name, params) in enumerate(ww_states.items()):
+            workers_params[worker_id][layer_id] = params.view(-1, 1)
+            logging.debug("workers_params[{}][{}]: {}".format(worker_id, layer_id, workers_params[worker_id][layer_id].shape))
+
+    logging.debug("")
+    workers_all_params = [[] for i in range(8)]
+    for ii in range(8):
+        for worker_id, worker_model in workers_params.items():
+            workers_all_params[ii].append(workers_params[worker_id][ii])
+        logging.debug("All Params[{}]: {} (num of workers)".format(ii, len(workers_all_params[ii])))
+
+    logging.debug("")
+    for ii in range(8):
+        workers_all_params[ii] = cat(workers_all_params[ii])
+        logging.debug("Concatenated All Params[{}]: {}, Mean: {}".format(
+            ii, workers_all_params[ii].shape, workers_all_params[ii].mean()))
+
+    logging.debug("")
+    #TODO Check other types of normalization
+    normalized_workers_all_params = []
+    for ii in range(len(workers_all_params)):
+        norm = MinMaxScaler().fit(workers_all_params[ii])
+        normalized_workers_all_params.append(norm.transform(workers_all_params[ii]))
+        logging.debug("Normalized Concatenated All Params[{}]: {}, Mean: {}".format(
+            ii, normalized_workers_all_params[ii].shape, normalized_workers_all_params[ii].mean()))
+
+    logging.debug("")
+    mapped_normalized = defaultdict(lambda: [])
+    for ww_no, worker_id in enumerate(workers_params.keys()):
+        tmp_state = dict()
+        for ii, (layer_name, params) in enumerate(models_dicts[worker_id].items()):
+            start_idx = ww_no * len(workers_params[worker_id][ii])
+            end_idx = (ww_no+1) * len(workers_params[worker_id][ii])
+            tmp_state[layer_name] = tensor(normalized_workers_all_params[ii][start_idx:end_idx, :]).view(params.shape)
+            logging.debug("Extracting for {}, Layer {}, from {}-{}: {}".format(
+                worker_id, layer_name, start_idx, end_idx, tmp_state[layer_name].shape))
+        
+        mapped_normalized[worker_id] = tmp_state
+
+    return mapped_normalized
+
+
+def find_best_weights(referenced_dict, workers_dict):
+    logging.debug("")
+    logging.debug("Finding Best Weigthe ----")
+    
+    reference_layer = []
+    workers_all_params = []
+    for ii, (layer_name, reference_param) in enumerate(referenced_dict.items()):
+        tmp = []
+        for ww_id, params in workers_dict.items():
+            logging.debug("working on {}, for {}: {}".format(ww_id, params[layer_name].shape, params[layer_name].view(-1, 1).mean()))
+            tmp.append(params[layer_name].view(-1, 1))
+        workers_all_params.append(cat(tmp, axis=1))
+        logging.debug("workers_all_params[{}]:\t{}".format(ii, workers_all_params[ii].shape))
+        reference_layer.append(reference_param.view(-1, 1))
+        logging.debug("reference_layer[{}]:\t{}".format(ii, reference_layer[ii].shape))
+
+    logging.debug("")
+    # Duplicate column of reference
+    reference_layers = []
+    for ii in range(8):
+        tmp = []
+        for jj in range(len(workers_dict)):
+            tmp.append(reference_layer[ii])
+        reference_layers.append(cat(tmp, axis=1))
+        logging.debug("reference_layers[{}]: {}".format(ii, reference_layers[ii].shape))
+
+    W = cp.Variable(len(workers_dict))
+    objective = cp.Minimize(
+            cp.matmul(cp.norm2(workers_all_params[0] - reference_layers[0], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[1] - reference_layers[1], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[2] - reference_layers[2], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[3] - reference_layers[3], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[4] - reference_layers[4], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[5] - reference_layers[5], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[6] - reference_layers[6], axis=0), W) +
+            cp.matmul(cp.norm2(workers_all_params[7] - reference_layers[7], axis=0), W)
+        )
+
+    # for i in range(len(workers_all_params)):
+    #     logging.debug("Mean [{}]: {}".format(i, (workers_all_params[i],0) - np.mean(reference_layers[i],0),6)))
+    #     logging.debug("")
+
+    constraints = [0 <= W, W <= 1, sum(W) == 1]
+    prob = cp.Problem(objective, constraints)
+    result = prob.solve(solver=cp.MOSEK)
+    logging.info("")
+    logging.info("Optimized weights: {}".format(W.value))
+    return W.value
+    # return 0
+
+
 def map_shards_to_worker(splitted_datasets, workers, num_shards_per_worker):
     idx = [ii for ii in range(len(splitted_datasets))]
     shuffle(idx)
@@ -322,6 +471,25 @@ def map_shards_to_worker(splitted_datasets, workers, num_shards_per_worker):
                 
     logging.info("Federated data to {} users..... OK".format(len(federated_datasets)))
     return federated_datasets     
+
+
+def fraction_of_datasets(datasets, fraction):
+    logging.info("Extracting {} of users data (total: {}) to be sent to the server...".format(
+        fraction, int(fraction * len(list(datasets.values())[0].targets))))
+    images, labels = [], []
+    for ww_id, dataset in datasets.items():
+        idx = randperm(len(dataset.targets))[:int(fraction * len(dataset.targets))]
+        images.append(dataset.data[idx])
+        labels.append(dataset.targets[idx])
+
+    aggregate_dataset = FLCustomDataset(
+        cat(images), cat(labels),
+        transform=transforms.Compose([
+            transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+    )
+    logging.info("Extracted... Ok, The size of the extracted data: {}".format(
+        aggregate_dataset.data.shape))
+    return aggregate_dataset
 
 
 def merge_and_shuffle_dataset(datasets):
@@ -354,7 +522,7 @@ def shuffle_data_labels(data, labels):
 
 def attack_shuffle_pixels(data):
     for ii in range(len(data)):
-        pixels_flattened = data[ii].reshape(-1)
+        pixels_flattened = data[ii].view(-1)
         rand_idx = randperm(len(pixels_flattened))
         pixels_flattened = pixels_flattened[rand_idx]
         data[ii] = pixels_flattened.reshape(-1, 28, 28)
@@ -363,7 +531,7 @@ def attack_shuffle_pixels(data):
 
 def attack_negative_pixels(data):
     for ii in range(len(data)):
-        pixels_flattened = data[ii].reshape(-1)
+        pixels_flattened = data[ii].view(-1)
         negative_pixels = np.array([1 - pp for pp in pixels_flattened], dtype = np.float32)
         data[ii] = negative_pixels.reshape(-1, 28, 28)
     return data
@@ -388,6 +556,37 @@ def attack_shuffle_labels(targets, percentage):
         if idx1[ii] != nn and nn not in idx2:
             idx2.append(nn)
     idx2 = np.array(idx2)
+    
+    logging.debug("Attack shuffel idx1: {}".format(idx1))
+    logging.debug("Attack shuffel idx2: {}".format(idx2))
+
+    target_map = dict()
+    for ii in range(len(idx1)):
+        target_map[idx1[ii]] = idx2[ii]
+
+    logging.debug("Target map for attack suffle labels: {}".format(target_map))
+    logging.debug("target labels before:\t{}...".format(targets[:15].ravel()))
+    for ii in range(len(targets)):
+        if targets[ii][0] in target_map.keys():
+            targets[ii] = target_map[targets[ii][0]]
+    logging.debug("target labels after:\t{}...".format(targets[:10].ravel()))
+    return targets
+
+
+def attack_shuffle_labels_tensor(targets, fraction):
+    print(targets[:10])
+    num_categories = unique(targets)
+    print(num_categories)
+    idx1 = shuffle(num_categories)[:int(fraction * len(num_categories))]
+
+    # Permute idx1 as idx2
+    idx2 = []
+    while len(idx2) < len(idx1):
+        ii = len(idx2)
+        nn = choice(idx1)
+        if idx1[ii] != nn and nn not in idx2:
+            idx2.append(nn)
+    idx2 = tensor(idx2, dtype=int64)
     
     logging.debug("Attack shuffel idx1: {}".format(idx1))
     logging.debug("Attack shuffel idx2: {}".format(idx2))

@@ -1,7 +1,10 @@
-script = open("/tmp/hdf5_dataloader/test.py")
-a_script = script.read()
-sys.argv = ["a_script.py", "arg1", "arg2", "arg3"]
+python run-study-noniid-mnist.py --epoch 5 --batch 20 --interval 2 --workers 10 --log --nep-log --output-prefix="niid_mnist_SAN_295"
 
 
-execfile( "/tmp/hdf5_dataloader/test.py")
-exec(open("/tmp/hdf5_dataloader/src/test.py").read())
+python run-study-noniid-mnist.py --epoch 5 --batch 20 --interval 2 --workers 20 --log --nep-log --output-prefix="niid_mnist_SAN_296"
+
+python run-study-noniid-mnist.py --epoch 10 --batch 20 --interval 2 --workers 10 --log --nep-log --output-prefix="niid_mnist_SAN_298"
+
+
+
+python run-study-niid-mnist-attacks.py --opt --log --nep-log --output-prefix "niid_attack3_SAN_313"

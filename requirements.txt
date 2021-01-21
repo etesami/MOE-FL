@@ -8,11 +8,13 @@ numpy==1.18.1
 docopt==0.6.2
 -e git+https://github.com/OpenMined/PySyft.git@0.2.9#egg=syft
 cvxpy==1.1.7
-neptune-client==0.4.125
+neptune-client
+tqdm
 h5py
 Mosek
 matplotlib
 idx2numpy
+coloredlogs
 scikit-learn
 https://download.pytorch.org/whl/cpu/torch-1.4.0%2Bcpu-cp38-cp38-linux_x86_64.whl
 https://download.pytorch.org/whl/cpu/torchvision-0.5.0%2Bcpu-cp38-cp38-linux_x86_64.whl

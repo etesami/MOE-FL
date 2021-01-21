@@ -3,7 +3,6 @@
 **/.vscode
 **/data_tmp
 **/data_output
-**/data
 **/*.pvc
 **/__pycache__
 **/.DS_Store
