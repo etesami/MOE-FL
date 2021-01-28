@@ -16,7 +16,7 @@ from sklearn.preprocessing import MinMaxScaler
 from collections import defaultdict
 from torchvision import transforms, datasets
 from torch.utils.data import DataLoader
-from torch import tensor, cat, float32, int64, randperm, split, unique
+from torch import tensor, cat, float32, int64, randperm, split, unique, norm, dot
 from federated_learning.FLCustomDataset import FLCustomDataset
 from federated_learning.AddGaussianNoise import AddGaussianNoise
 
@@ -343,7 +343,7 @@ def perform_attack_noniid(datasets, workers_idx, attackers_idx, attack_type, att
                     # targets = attack_shuffle_labels_tensor(dataset.targets, 1.0)
                     new_datasets[ww_id] = FLCustomDataset(
                         data, targets, transform=transforms.Compose([
-                            transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,)), AddGaussianNoise(0., 2.5),]))
+                            transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,)), AddGaussianNoise(0., 3.0),]))
                 else:
                     logging.debug("NOT EXPECTED: NO VALID ATTACK ID!")
             else:
@@ -401,53 +401,76 @@ def normalize_weights(models_dicts):
     return mapped_normalized
 
 
-def find_best_weights(referenced_dict, workers_dict):
+def find_best_weights(referenced_model, workers_model):
+    logging.info("Finding Best Weigthe ----")
+
+    ref_state = referenced_model.state_dict()
+
+    exp_var = dict()
+    for ww_id, ww_model in workers_model.items():
+        a = 0
+        for layer_name, layer_param in ww_model.state_dict().items():
+            a += (dot(
+                    layer_param.view(-1),  
+                    ref_state[layer_name].view(-1) 
+                )) / np.linalg.norm(layer_param)
+        a = a/8.0
+        exp_var[ww_id] = a.numpy()
+
+    rho = dict()
+    for ww_n in workers_model.keys():
+        rho[ww_n] = np.exp(exp_var[ww_n])/sum(np.exp(list(exp_var.values())))
+        # rho[ww_n] = (exp_var[ww_n]**2)/sum([ll**2 for ll in list(exp_var.values())])
+        print("{}:\t{}".format(ww_n, rho[ww_n]))
+
+    print("------ SUM: {}".format(sum(list(rho.values()))))
+
+
+def find_best_weights1(reference_model, workers_model):
     logging.debug("")
-    logging.debug("Finding Best Weigthe ----")
+    logging.info("Finding Best Weigthe ----")
     
-    reference_layer = []
-    workers_all_params = []
-    for ii, (layer_name, reference_param) in enumerate(referenced_dict.items()):
-        tmp = []
-        for ww_id, params in workers_dict.items():
-            logging.debug("working on {}, for {}: {}".format(ww_id, params[layer_name].shape, params[layer_name].view(-1, 1).mean()))
-            tmp.append(params[layer_name].view(-1, 1))
-        workers_all_params.append(cat(tmp, axis=1))
-        logging.debug("workers_all_params[{}]:\t{}".format(ii, workers_all_params[ii].shape))
-        reference_layer.append(reference_param.view(-1, 1))
-        logging.debug("reference_layer[{}]:\t{}".format(ii, reference_layer[ii].shape))
+    ref_state = reference_model.state_dict()
 
-    logging.debug("")
-    # Duplicate column of reference
-    reference_layers = []
-    for ii in range(8):
+    workers_all_params = tensor([])
+    for ww_n, (ww_id, model) in enumerate(workers_model.items()):
         tmp = []
-        for jj in range(len(workers_dict)):
-            tmp.append(reference_layer[ii])
-        reference_layers.append(cat(tmp, axis=1))
-        logging.debug("reference_layers[{}]: {}".format(ii, reference_layers[ii].shape))
+        for ii, (layer_name, layer_param) in enumerate(model.state_dict().items()):
+            if ii == 7:
+                logging.debug("working on {} Layer {}, with {}".format(ww_id, layer_name, layer_param.shape))
+                tmp.append(layer_param.view(-1, 1))
+                # logging.info("working on {} Layer {}, with {}/{}".format(ww_id, layer_name, layer_param.shape, tmp[ii].shape))
+        workers_all_params = cat((workers_all_params, cat(tmp, axis=0)), dim=1)
+        logging.debug("-- workers_all_params[{}]:\t{}".format(ww_n, workers_all_params.shape))
+    
+    logging.info("")
 
-    W = cp.Variable(len(workers_dict))
+    # reference_layer = []
+    tmp = []
+    for ii, (layer_name, layer_param) in enumerate(ref_state.items()):
+        if ii == 7:
+            tmp.append(layer_param.view(-1, 1))
+    reference_layer = cat(tmp, axis=0)
+    logging.debug("-- reference_layer: \t{}".format(reference_layer.shape))
+
+    reference_layers = reference_layer.repeat(1, len(workers_model))
+    logging.debug("-- reference_layers: \t{}".format(reference_layers.shape))
+
+    # # #TODO: Check this
+            # 1.0/len(workers_model) * 
+    W = cp.Variable(len(workers_model))
     objective = cp.Minimize(
-            cp.matmul(cp.norm2(workers_all_params[0] - reference_layers[0], axis=0), W) +
-            cp.matmul(cp.norm2(workers_all_params[1] - reference_layers[1], axis=0), W) +
-            cp.matmul(cp.norm2(workers_all_params[2] - reference_layers[2], axis=0), W) +
-            cp.matmul(cp.norm2(workers_all_params[3] - reference_layers[3], axis=0), W) +
-            cp.matmul(cp.norm2(workers_all_params[4] - reference_layers[4], axis=0), W) +
-            cp.matmul(cp.norm2(workers_all_params[5] - reference_layers[5], axis=0), W) +
-            cp.matmul(cp.norm2(workers_all_params[6] - reference_layers[6], axis=0), W) +
-            cp.matmul(cp.norm2(workers_all_params[7] - reference_layers[7], axis=0), W)
-        )
+                (cp.matmul(
+                    cp.power(
+                        cp.norm2(workers_all_params - reference_layers, axis=0), 2), W))
+            )
 
-    # for i in range(len(workers_all_params)):
-    #     logging.debug("Mean [{}]: {}".format(i, (workers_all_params[i],0) - np.mean(reference_layers[i],0),6)))
-    #     logging.debug("")
-
-    constraints = [0 <= W, W <= 1, sum(W) == 1]
+    constraints = [0.0 <= W, W <= 1.0, sum(W) == 1.0]
     prob = cp.Problem(objective, constraints)
     result = prob.solve(solver=cp.MOSEK)
     logging.info("")
-    logging.info("Optimized weights: {}".format(W.value))
+    for ii, ww_id in enumerate(workers_model.keys()):
+        logging.info("Optimized weights [{}]: {}".format(ww_id, W.value[ii]))
     return W.value
     # return 0
 
