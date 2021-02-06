@@ -4,6 +4,7 @@
 # pip install --upgrade pip 
 # pip install wheel setuptools
 ###### Requirements ######
+torchattacks
 numpy==1.18.1
 docopt==0.6.2
 -e git+https://github.com/OpenMined/PySyft.git@0.2.9#egg=syft

@@ -1,7 +1,9 @@
 class Arguments():
     def __init__(
         self, batch_size, test_batch_size, rounds, epochs, 
-        lr, momentum, weight_decay, shards_num, shards_per_worker_num, attack_type, attackers_num, use_cuda, device, seed, log_interval, 
+        lr, momentum, weight_decay, shards_num, shards_per_worker_num, total_users_num, selected_users_num, 
+        server_data_fraction, mode,
+        attack_type, attackers_num, use_cuda, device, seed, log_interval, 
         log_level, log_format, log_dir, neptune_log, local_log):
 
         self.batch_size = batch_size
@@ -13,6 +15,10 @@ class Arguments():
         self.weight_decay = weight_decay
         self.shards_num = shards_num
         self.shards_per_worker_num = shards_per_worker_num
+        self.total_users_num = int(total_users_num)
+        self.selected_users_num = selected_users_num
+        self.server_data_fraction = server_data_fraction
+        self.mode = mode
         self.attack_type = attack_type
         self.attackers_num = attackers_num
         self.use_cuda = use_cuda

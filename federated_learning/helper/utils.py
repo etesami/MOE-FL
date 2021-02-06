@@ -16,7 +16,7 @@ from sklearn.preprocessing import MinMaxScaler
 from collections import defaultdict
 from torchvision import transforms, datasets
 from torch.utils.data import DataLoader
-from torch import tensor, cat, float32, int64, randperm, split, unique, norm, dot
+from torch import tensor, cat, float32, int64, randperm, split, unique, norm, dot, numel
 from federated_learning.FLCustomDataset import FLCustomDataset
 from federated_learning.AddGaussianNoise import AddGaussianNoise
 
@@ -39,6 +39,27 @@ def load_config(configPath):
         exit(1)
     return configs
 
+def print_model(name, model):
+    print()
+    for ii, jj in model.named_parameters():
+        if ii == "conv1.bias":
+            print("{}: {}".format(name, jj.data[:7]))
+    print()
+
+def wieghted_avg_model(weights, workers_model):
+    layers = dict()
+    for layer_name, layer in list(workers_model.values())[0].state_dict().items():
+        layer_ = tensor([0.0] * numel(layer), dtype=float32).view(layer.shape)
+        layers[layer_name] = layer_
+    for ww_id, model in workers_model.items():
+        for layer_no, (layer_name, layer_data) in enumerate(model.state_dict().items()):
+            layers[layer_name] += weights[ww_id] * layer_data
+    return layers
+
+def negative_parameters(model_params):
+    for layer_name, layer_param in model_params.items():
+        layer_param *= -1.0
+    return model_params
 
 def write_to_file(output_dir, file_name, content):
     full_path = "{}/{}".format(output_dir, file_name)
@@ -101,7 +122,7 @@ def split_dataset(dataset, samples_per_shards_num):
                 splitted_data[ii],
                 splitted_targets[ii],
                 transform=transforms.Compose([
-                    transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+                    transforms.ToTensor()])
             )
         )
     return splitted_datasets
@@ -175,7 +196,30 @@ def get_server_mnist_dataset(dataset, workers_num, percentage):
     return FLCustomDataset(server_dataset['x'], server_dataset['y'])
 
 
-def load_mnist_data_train():
+# def load_mnist_data_train():
+#     """ 
+#     Args:
+#         data_dir (str): 
+#         fraction (float): Out of 1, how much of data is imported
+#     Returns:
+        
+#     """  
+#     logging.info("Loading train data from MNIST dataset...")
+#     # file_path = "/train-images-idx3-ubyte"
+#     # train_data = dict()
+#     # train_data['x'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.float32)
+    
+#     # train_data['x'] = train_data['x'][:int(float(fraction) * len(train_data['x']))]
+#     # file_path = "/train-labels-idx1-ubyte"
+#     # train_data['y'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.int64)
+#     # train_data['y'] = train_data['y'][:int(float(fraction) * len(train_data['y']))]
+
+#     return datasets.MNIST("/tmp/data", train=True, download=True,
+#                         transform=transforms.Compose([
+#                                 transforms.ToTensor(),
+#                                 transforms.Normalize((0.1307,), (0.3081,))]))
+
+def load_mnist_dataset(train=True, transform=None):
     """ 
     Args:
         data_dir (str): 
@@ -184,34 +228,22 @@ def load_mnist_data_train():
         
     """  
     logging.info("Loading train data from MNIST dataset...")
-    # file_path = "/train-images-idx3-ubyte"
-    # train_data = dict()
-    # train_data['x'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.float32)
-    
-    # train_data['x'] = train_data['x'][:int(float(fraction) * len(train_data['x']))]
-    # file_path = "/train-labels-idx1-ubyte"
-    # train_data['y'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.int64)
-    # train_data['y'] = train_data['y'][:int(float(fraction) * len(train_data['y']))]
-
-    return datasets.MNIST("/tmp/data", train=True, download=True,
-                        transform=transforms.Compose([
-                                transforms.ToTensor(),
-                                transforms.Normalize((0.1307,), (0.3081,))]))
+    return datasets.MNIST("/tmp/data", train=train, download=True, transform=transform)
     
 
-def load_mnist_data_test():
-    logging.info("Loading test data from MNIST dataset.")
-    # file_path = "/t10k-images-idx3-ubyte"
-    # test_data = dict()
-    # test_data['x'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.float32)
+# def load_mnist_data_test():
+#     logging.info("Loading test data from MNIST dataset.")
+#     # file_path = "/t10k-images-idx3-ubyte"
+#     # test_data = dict()
+#     # test_data['x'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.float32)
     
-    # file_path = "/t10k-labels-idx1-ubyte"
-    # test_data['y'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.int64)
+#     # file_path = "/t10k-labels-idx1-ubyte"
+#     # test_data['y'] = idx2numpy.convert_from_file(data_dir + file_path).astype(np.int64)
 
-    return datasets.MNIST("/tmp/data", train=False, download=True, 
-                        transform=transforms.Compose([
-                                transforms.ToTensor(),
-                                transforms.Normalize((0.1307,), (0.3081,))]))
+#     return datasets.MNIST("/tmp/data", train=False, download=True, 
+#                         transform=transforms.Compose([
+#                                 transforms.ToTensor(),
+#                                 transforms.Normalize((0.1307,), (0.3081,))]))
 
 
 # def preprocess_mnist(dataset):
@@ -247,7 +279,7 @@ def sort_mnist_dataset(dataset):
         dataset.data[sorted_index],
         dataset.targets[sorted_index],
         transform=transforms.Compose([
-            transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+            transforms.ToTensor()])
         )
 
 
@@ -265,144 +297,144 @@ def get_dataloader(dataset, batch_size, shuffle, drop_last):
         batch_size=batch_size , shuffle=shuffle, drop_last=drop_last)
 
 
-def perfrom_attack(dataset, attack_id, workers_idx, evasdropers_idx, percentage=100):
-    """ 
-    Args:
-        dataset (FLCustomDataset): 
-        attack_id (int):
-            1: shuffle
-            2: negative_value
-            3: labels
+# def perfrom_attack(dataset, attack_id, workers_idx, evasdropers_idx, percentage=100):
+#     """ 
+#     Args:
+#         dataset (FLCustomDataset): 
+#         attack_id (int):
+#             1: shuffle
+#             2: negative_value
+#             3: labels
         
-        evasdropers_idx (list(int))
-        percentage (int): Amount of data affected in each eavesdropper
-    Returns:
-        dataset (FLCustomDataset)
-    """  
-    batch_size = int(len(dataset) / len(workers_idx))
-    logging.debug("Batch size for {} workers: {}".format(len(workers_idx), batch_size))
-    logging.info("Create a temporaily dataloader...")
-    tmp_dataloader = get_dataloader(dataset, batch_size, shuffle=False, drop_last=True)
-    data_x = tensor([], dtype=float32).reshape(0, 1, 28, 28)
-    data_y = tensor([], dtype=int64)
-    logging.debug("Attack ID: {}".format(attack_id))
-    for idx, (data, target) in enumerate(tmp_dataloader):
-        if workers_idx[idx] in evasdropers_idx:
-            logging.debug("Find target [{}] for the attack.".format(idx))
-            if attack_id == 1:
-                logging.debug("Performing attack [shuffle pixels] for user {}...".format(idx))
-                data = attack_shuffle_pixels(data)
-            elif attack_id == 2:
-                logging.debug("Performing attack [negative of pixels] for user {}...".format(idx))
-                data = attack_negative_pixels(data)
-            elif attack_id == 3:
-                logging.debug("Performing attack [shuffle labels] for user {}...".format(idx))
-                data = attack_shuffle_labels(target, percentage)
-            else:
-                logging.debug("NOT EXPECTED: NO VALID ATTACK ID!")
-        data_x = cat((data_x, data))
-        data_y = cat((data_y, target))
+#         evasdropers_idx (list(int))
+#         percentage (int): Amount of data affected in each eavesdropper
+#     Returns:
+#         dataset (FLCustomDataset)
+#     """  
+#     batch_size = int(len(dataset) / len(workers_idx))
+#     logging.debug("Batch size for {} workers: {}".format(len(workers_idx), batch_size))
+#     logging.info("Create a temporaily dataloader...")
+#     tmp_dataloader = get_dataloader(dataset, batch_size, shuffle=False, drop_last=True)
+#     data_x = tensor([], dtype=float32).reshape(0, 1, 28, 28)
+#     data_y = tensor([], dtype=int64)
+#     logging.debug("Attack ID: {}".format(attack_id))
+#     for idx, (data, target) in enumerate(tmp_dataloader):
+#         if workers_idx[idx] in evasdropers_idx:
+#             logging.debug("Find target [{}] for the attack.".format(idx))
+#             if attack_id == 1:
+#                 logging.debug("Performing attack [shuffle pixels] for user {}...".format(idx))
+#                 data = attack_shuffle_pixels(data)
+#             elif attack_id == 2:
+#                 logging.debug("Performing attack [negative of pixels] for user {}...".format(idx))
+#                 data = attack_negative_pixels(data)
+#             elif attack_id == 3:
+#                 logging.debug("Performing attack [shuffle labels] for user {}...".format(idx))
+#                 data = attack_shuffle_labels(target, percentage)
+#             else:
+#                 logging.debug("NOT EXPECTED: NO VALID ATTACK ID!")
+#         data_x = cat((data_x, data))
+#         data_y = cat((data_y, target))
         
-    return FLCustomDataset(data_x, data_y)
+#     return FLCustomDataset(data_x, data_y)
 
 
-def perform_attack_noniid(datasets, workers_idx, attackers_idx, attack_type, attackers_num):
-    """ 
-    Args:
-        dataset (FLCustomDataset): 
-        attack_id (int):
-            0: No Attack
-            1: shuffle
-            2: negative_value
-            3: labels
+# def perform_attack_noniid(datasets, workers_idx, attackers_idx, attack_type, attackers_num):
+#     """ 
+#     Args:
+#         dataset (FLCustomDataset): 
+#         attack_id (int):
+#             0: No Attack
+#             1: shuffle
+#             2: negative_value
+#             3: labels
         
-        evasdropers_idx (list(int))
-        percentage (int): Amount of data affected in each eavesdropper
-    Returns:
-        dataset (FLCustomDataset)
-    """  
-    new_datasets = dict()
-    logging.info("Attack ID: {}".format(attack_type))
-    if attack_type == 0:
-        logging.info("Attack ID: {}: No Attack is performed...".format(attack_type))
-        # data = attack_shuffle_pixels(data)
-    else:
-        for ww_id, dataset in datasets.items():
-            data = dataset.data
-            targets = dataset.targets
-            if ww_id in attackers_idx:
-                logging.info("Performing attack on {}...".format(ww_id))
-                if attack_type == 1:
-                    logging.debug("Performing attack [shuffle pixels] on {} workers...".format(attackers_num))
-                    # data = attack_shuffle_pixels(dataset.data)
-                elif attack_type == 2:
-                    logging.debug("Performing attack [negative of pixels] on {} workers...".format(attackers_num))
-                    # data = attack_negative_pixels(dataset.data)
-                elif attack_type == 3:
-                    logging.debug("Performing attack [shuffle labels] on {} workers...".format(attackers_num))
-                    # targets = attack_shuffle_labels_tensor(dataset.targets, 1.0)
-                    new_datasets[ww_id] = FLCustomDataset(
-                        data, targets, transform=transforms.Compose([
-                            transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,)), AddGaussianNoise(0., 3.0),]))
-                else:
-                    logging.debug("NOT EXPECTED: NO VALID ATTACK ID!")
-            else:
-                new_datasets[ww_id] = dataset
+#         evasdropers_idx (list(int))
+#         percentage (int): Amount of data affected in each eavesdropper
+#     Returns:
+#         dataset (FLCustomDataset)
+#     """  
+#     new_datasets = dict()
+#     logging.info("Attack ID: {}".format(attack_type))
+#     if attack_type == 0:
+#         logging.info("Attack ID: {}: No Attack is performed...".format(attack_type))
+#         # data = attack_shuffle_pixels(data)
+#     else:
+#         for ww_id, dataset in datasets.items():
+#             data = dataset.data
+#             targets = dataset.targets
+#             if ww_id in attackers_idx:
+#                 logging.info("Performing attack on {}...".format(ww_id))
+#                 if attack_type == 1:
+#                     logging.debug("Performing attack [shuffle pixels] on {} workers...".format(attackers_num))
+#                     # data = attack_shuffle_pixels(dataset.data)
+#                 elif attack_type == 2:
+#                     logging.debug("Performing attack [negative of pixels] on {} workers...".format(attackers_num))
+#                     # data = attack_negative_pixels(dataset.data)
+#                 elif attack_type == 3:
+#                     logging.debug("Performing attack [shuffle labels] on {} workers...".format(attackers_num))
+#                     # targets = attack_shuffle_labels_tensor(dataset.targets, 1.0)
+#                     new_datasets[ww_id] = FLCustomDataset(
+#                         data, targets, transform=transforms.Compose([
+#                             transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,)), AddGaussianNoise(0., 3.0),]))
+#                 else:
+#                     logging.debug("NOT EXPECTED: NO VALID ATTACK ID!")
+#             else:
+#                 new_datasets[ww_id] = dataset
         
-    return new_datasets
+#     return new_datasets
 
 
-def normalize_weights(models_dicts):
-    logging.debug("")
-    logging.debug("Normalization of models states ------ ")
+# def normalize_weights(models_dicts):
+#     logging.debug("")
+#     logging.debug("Normalization of models states ------ ")
 
-    workers_params = {}
-    for worker_id, ww_states in models_dicts.items():
-        workers_params[worker_id] = [[] for i in range(8)]
-        for layer_id, (layer_name, params) in enumerate(ww_states.items()):
-            workers_params[worker_id][layer_id] = params.view(-1, 1)
-            logging.debug("workers_params[{}][{}]: {}".format(worker_id, layer_id, workers_params[worker_id][layer_id].shape))
+#     workers_params = {}
+#     for worker_id, ww_states in models_dicts.items():
+#         workers_params[worker_id] = [[] for i in range(8)]
+#         for layer_id, (layer_name, params) in enumerate(ww_states.items()):
+#             workers_params[worker_id][layer_id] = params.view(-1, 1)
+#             logging.debug("workers_params[{}][{}]: {}".format(worker_id, layer_id, workers_params[worker_id][layer_id].shape))
 
-    logging.debug("")
-    workers_all_params = [[] for i in range(8)]
-    for ii in range(8):
-        for worker_id, worker_model in workers_params.items():
-            workers_all_params[ii].append(workers_params[worker_id][ii])
-        logging.debug("All Params[{}]: {} (num of workers)".format(ii, len(workers_all_params[ii])))
+#     logging.debug("")
+#     workers_all_params = [[] for i in range(8)]
+#     for ii in range(8):
+#         for worker_id, worker_model in workers_params.items():
+#             workers_all_params[ii].append(workers_params[worker_id][ii])
+#         logging.debug("All Params[{}]: {} (num of workers)".format(ii, len(workers_all_params[ii])))
 
-    logging.debug("")
-    for ii in range(8):
-        workers_all_params[ii] = cat(workers_all_params[ii])
-        logging.debug("Concatenated All Params[{}]: {}, Mean: {}".format(
-            ii, workers_all_params[ii].shape, workers_all_params[ii].mean()))
+#     logging.debug("")
+#     for ii in range(8):
+#         workers_all_params[ii] = cat(workers_all_params[ii])
+#         logging.debug("Concatenated All Params[{}]: {}, Mean: {}".format(
+#             ii, workers_all_params[ii].shape, workers_all_params[ii].mean()))
 
-    logging.debug("")
-    #TODO Check other types of normalization
-    normalized_workers_all_params = []
-    for ii in range(len(workers_all_params)):
-        norm = MinMaxScaler().fit(workers_all_params[ii])
-        normalized_workers_all_params.append(norm.transform(workers_all_params[ii]))
-        logging.debug("Normalized Concatenated All Params[{}]: {}, Mean: {}".format(
-            ii, normalized_workers_all_params[ii].shape, normalized_workers_all_params[ii].mean()))
+#     logging.debug("")
+#     #TODO Check other types of normalization
+#     normalized_workers_all_params = []
+#     for ii in range(len(workers_all_params)):
+#         norm = MinMaxScaler().fit(workers_all_params[ii])
+#         normalized_workers_all_params.append(norm.transform(workers_all_params[ii]))
+#         logging.debug("Normalized Concatenated All Params[{}]: {}, Mean: {}".format(
+#             ii, normalized_workers_all_params[ii].shape, normalized_workers_all_params[ii].mean()))
 
-    logging.debug("")
-    mapped_normalized = defaultdict(lambda: [])
-    for ww_no, worker_id in enumerate(workers_params.keys()):
-        tmp_state = dict()
-        for ii, (layer_name, params) in enumerate(models_dicts[worker_id].items()):
-            start_idx = ww_no * len(workers_params[worker_id][ii])
-            end_idx = (ww_no+1) * len(workers_params[worker_id][ii])
-            tmp_state[layer_name] = tensor(normalized_workers_all_params[ii][start_idx:end_idx, :]).view(params.shape)
-            logging.debug("Extracting for {}, Layer {}, from {}-{}: {}".format(
-                worker_id, layer_name, start_idx, end_idx, tmp_state[layer_name].shape))
+#     logging.debug("")
+#     mapped_normalized = defaultdict(lambda: [])
+#     for ww_no, worker_id in enumerate(workers_params.keys()):
+#         tmp_state = dict()
+#         for ii, (layer_name, params) in enumerate(models_dicts[worker_id].items()):
+#             start_idx = ww_no * len(workers_params[worker_id][ii])
+#             end_idx = (ww_no+1) * len(workers_params[worker_id][ii])
+#             tmp_state[layer_name] = tensor(normalized_workers_all_params[ii][start_idx:end_idx, :]).view(params.shape)
+#             logging.debug("Extracting for {}, Layer {}, from {}-{}: {}".format(
+#                 worker_id, layer_name, start_idx, end_idx, tmp_state[layer_name].shape))
         
-        mapped_normalized[worker_id] = tmp_state
+#         mapped_normalized[worker_id] = tmp_state
 
-    return mapped_normalized
+#     return mapped_normalized
 
 
 def find_best_weights(referenced_model, workers_model):
-    logging.info("Finding Best Weigthe ----")
+    logging.debug("Finding Best Weigthe ----")
 
     ref_state = referenced_model.state_dict()
 
@@ -421,14 +453,15 @@ def find_best_weights(referenced_model, workers_model):
     for ww_n in workers_model.keys():
         rho[ww_n] = np.exp(exp_var[ww_n])/sum(np.exp(list(exp_var.values())))
         # rho[ww_n] = (exp_var[ww_n]**2)/sum([ll**2 for ll in list(exp_var.values())])
-        print("{}:\t{}".format(ww_n, rho[ww_n]))
+        # print("{}:\t{}".format(ww_n, rho[ww_n]))
 
-    print("------ SUM: {}".format(sum(list(rho.values()))))
+    # print("------ SUM: {}".format(sum(list(rho.values()))))
+    return rho
 
 
-def find_best_weights1(reference_model, workers_model):
+def find_best_weights_opt(reference_model, workers_model):
     logging.debug("")
-    logging.info("Finding Best Weigthe ----")
+    logging.debug("Finding Best Weigthe ----")
     
     ref_state = reference_model.state_dict()
 
@@ -443,7 +476,7 @@ def find_best_weights1(reference_model, workers_model):
         workers_all_params = cat((workers_all_params, cat(tmp, axis=0)), dim=1)
         logging.debug("-- workers_all_params[{}]:\t{}".format(ww_n, workers_all_params.shape))
     
-    logging.info("")
+    # logging.info("")
 
     # reference_layer = []
     tmp = []
@@ -468,18 +501,19 @@ def find_best_weights1(reference_model, workers_model):
     constraints = [0.0 <= W, W <= 1.0, sum(W) == 1.0]
     prob = cp.Problem(objective, constraints)
     result = prob.solve(solver=cp.MOSEK)
-    logging.info("")
+    # logging.info("")
+    rho = dict()
     for ii, ww_id in enumerate(workers_model.keys()):
-        logging.info("Optimized weights [{}]: {}".format(ww_id, W.value[ii]))
-    return W.value
-    # return 0
+        rho[ww_id] = W.value[ii]
+        # logging.info("Optimized weights [{}]: {}".format(ww_id, W.value[ii]))
+    return rho
 
 
-def map_shards_to_worker(splitted_datasets, workers, num_shards_per_worker):
+def map_shards_to_worker(splitted_datasets, workers_ids, num_shards_per_worker):
     idx = [ii for ii in range(len(splitted_datasets))]
     shuffle(idx)
     federated_datasets = defaultdict(lambda: [])
-    for ii, (ww_id, worker) in enumerate(workers.items()):
+    for ii, ww_id in enumerate(workers_ids):
         images, labels = [], []
         # Two shard should be given to each worker
         for shard_idx in range(num_shards_per_worker):
@@ -490,25 +524,25 @@ def map_shards_to_worker(splitted_datasets, workers, num_shards_per_worker):
         federated_datasets[ww_id] = FLCustomDataset(
             images,labels, 
             transform=transforms.Compose([
-                transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]))
+                transforms.ToTensor()]))
                 
     logging.info("Federated data to {} users..... OK".format(len(federated_datasets)))
     return federated_datasets     
 
 
 def fraction_of_datasets(datasets, fraction):
-    logging.info("Extracting {} of users data (total: {}) to be sent to the server...".format(
-        fraction, int(fraction * len(list(datasets.values())[0].targets))))
+    logging.info("Extracting {}% of users data (total: {}) to be sent to the server...".format(
+        fraction * 100.0, int(fraction * len(datasets) * len(list(datasets.values())[0].targets))))
     images, labels = [], []
     for ww_id, dataset in datasets.items():
         idx = randperm(len(dataset.targets))[:int(fraction * len(dataset.targets))]
-        images.append(dataset.data[idx])
-        labels.append(dataset.targets[idx])
+        images.append(dataset.data[idx.tolist()])
+        labels.append(dataset.targets[idx.tolist()])
 
     aggregate_dataset = FLCustomDataset(
         cat(images), cat(labels),
         transform=transforms.Compose([
-            transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+            transforms.ToTensor()])
     )
     logging.info("Extracted... Ok, The size of the extracted data: {}".format(
         aggregate_dataset.data.shape))
@@ -523,7 +557,7 @@ def merge_and_shuffle_dataset(datasets):
     images, labels = cat(images), cat(labels)
     return shuffle_dataset(FLCustomDataset(
         images, labels, transform=transforms.Compose(
-            [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])))
+            [transforms.ToTensor()])))
 
     
 def shuffle_dataset(dataset):
@@ -531,7 +565,7 @@ def shuffle_dataset(dataset):
     return FLCustomDataset(
         new_data, new_labels, 
         transform=transforms.Compose([
-            transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]))
+            transforms.ToTensor()]))
 
 
 def shuffle_data_labels(data, labels):
