@@ -1,22 +1,22 @@
 import os
 import yaml
-import idx2numpy
 import numpy as np
 import logging
 import json
 import h5py
 import cvxpy as cp
+import pickle
 import syft as sy
-from tqdm import tqdm
-from os import mkdir
-from random import sample, choice, shuffle
+import subprocess
+import random
+from random import sample, choice
 from time import strftime
 from math import floor
-from sklearn.preprocessing import MinMaxScaler
 from collections import defaultdict
 from torchvision import transforms, datasets
+import torch
 from torch.utils.data import DataLoader
-from torch import tensor, cat, float32, int64, randperm, split, unique, norm, dot, numel
+from torch import tensor, float32, int64, unique, norm, dot, numel
 from federated_learning.FLCustomDataset import FLCustomDataset
 from federated_learning.AddGaussianNoise import AddGaussianNoise
 
@@ -39,6 +39,7 @@ def load_config(configPath):
         exit(1)
     return configs
 
+
 def print_model(name, model):
     print()
     for ii, jj in model.named_parameters():
@@ -46,38 +47,78 @@ def print_model(name, model):
             print("{}: {}".format(name, jj.data[:7]))
     print()
 
-def wieghted_avg_model(weights, workers_model):
+
+def wieghted_avg_model(weights, workers_model, workers_idx):
     layers = dict()
     for layer_name, layer in list(workers_model.values())[0].state_dict().items():
         layer_ = tensor([0.0] * numel(layer), dtype=float32).view(layer.shape)
         layers[layer_name] = layer_
-    for ww_id, model in workers_model.items():
-        for layer_no, (layer_name, layer_data) in enumerate(model.state_dict().items()):
+    for ww_id in workers_idx:
+        for layer_no, (layer_name, layer_data) in enumerate(workers_model[ww_id].state_dict().items()):
             layers[layer_name] += weights[ww_id] * layer_data
     return layers
+
 
 def negative_parameters(model_params):
     for layer_name, layer_param in model_params.items():
         layer_param *= -1.0
     return model_params
 
-def write_to_file(output_dir, file_name, content):
+
+def check_write_to_file(output_dir, file_name, content):
     full_path = "{}/{}".format(output_dir, file_name)
-    with open(full_path, "w") as f:
-        f.write("{}".format(content))
+    if not os.path.isfile(full_path):
+        write_to_file(output_dir, file_name, content)
+
+
+def write_to_file(output_dir, file_name, content, round_no=None):
+    full_path = "{}/{}".format(output_dir, file_name)
+    output = "{}\n".format(content) if round_no is None else "{} {}\n".format(round_no, content)
+    with open(full_path, "a") as f:
+        f.write(output)
     f.close
 
-def save_configs(output_dir, configs):
+
+def check_save_configs(output_dir, configs):
     full_path = "{}/configs".format(output_dir)
-    with open(full_path, "w") as f:
-        yaml.dump(configs, f, default_flow_style=False)
-    f.close
+    if os.path.isfile(full_path):
+        logging.info("Config file exists.")
+    else:
+        logging.info("Copying config file...")
+        with open(full_path, "w") as f:
+            yaml.dump(configs, f, default_flow_style=False)
+        f.close
 
 
-def make_output_dir(root_dir, output_prefix):
-    output_dir = "{}/{}_{}/".format(root_dir, strftime("%Y%m%d_%H%M%S"), output_prefix)
+def get_last_round_num(output_dir, file_name):
+    full_path = "{}/{}".format(output_dir, file_name)
+    line = subprocess.check_output(['tail', '-1', full_path]).decode('utf-8')
+    return line.split(' ')[0]
+
+
+def check_create_output_dir(parent_log_dir_name, output_prefix):
+    full_root_path = "{}/{}".format(get_app_root_dir(), parent_log_dir_name)
+    target_folder = [ff for ff in os.listdir(full_root_path) if output_prefix in ff]
+    if len(target_folder) == 1:
+        logging.info("A prevoiusly created log directory was found: {}".format(target_folder[0]))
+        output_dir = "{}/{}/".format(parent_log_dir_name, target_folder[0])
+        return output_dir
+    else:
+        if len(target_folder) > 1:
+            logging.warning("More than one prevoiusly created log directory were found!")
+        else:
+            return make_output_dir(parent_log_dir_name, output_prefix)
+
+
+def get_app_root_dir():
+    return os.path.dirname(
+            os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__))))
+
+def make_output_dir(parent_log_dir_name, output_prefix):
+    output_dir = "{}/{}_{}/".format(parent_log_dir_name, strftime("%Y%m%d_%H%M%S"), output_prefix)
     logging.info("Creating the output direcotry as {}.".format(output_dir))
-    mkdir(output_dir)
+    os.mkdir(output_dir)
     return output_dir
 
 
@@ -111,21 +152,21 @@ def get_flattened_data(data):
 
     return data_flattened_x, data_flattened_y
 
-def split_dataset(dataset, samples_per_shards_num):
-    splitted_datasets = []
-    logging.info("Splitting the dataset into tensors with {} samples...".format(samples_per_shards_num))
-    splitted_data = split(dataset.data, samples_per_shards_num)
-    splitted_targets = split(dataset.targets, samples_per_shards_num)
-    for ii in range(len(splitted_data)):
-        splitted_datasets.append(
-            FLCustomDataset(
-                splitted_data[ii],
-                splitted_targets[ii],
+def split_randomly_dataset(dataset, shards_num):
+    samples_per_shards_num = int(len(dataset) / shards_num)
+    logging.info(
+        "Splitting the dataset into {} groups, each with {} samples...".format(shards_num, samples_per_shards_num))
+    idx = [ii for ii in range(shards_num)]
+    random.shuffle(idx)
+    splitted_data = torch.split(dataset.data, samples_per_shards_num)
+    splitted_targets = torch.split(dataset.targets, samples_per_shards_num)
+    for ii in range(len(idx)):
+        yield FLCustomDataset(
+                splitted_data[idx[ii]],
+                splitted_targets[idx[ii]],
                 transform=transforms.Compose([
                     transforms.ToTensor()])
             )
-        )
-    return splitted_datasets
 
 def dataset_info(dataset):
     list_keys = list(dataset.keys())
@@ -185,8 +226,8 @@ def get_server_mnist_dataset(dataset, workers_num, percentage):
     for batch_idx, (data, target) in enumerate(tmp_dataloader):
         # if batch_idx % 100 == 0:
         #     logging.info('{:.2f}% Loaded...'.format(round((batch_idx * 100) / len(dataloader), 2)))
-        server_dataset['x'] = cat((server_dataset['x'], data[:floor(len(data) * (percentage / 100.0))]))
-        server_dataset['y'] = cat((server_dataset['y'], target[:floor(len(target) * (percentage / 100.0))]))
+        server_dataset['x'] = torch.cat((server_dataset['x'], data[:floor(len(data) * (percentage / 100.0))]))
+        server_dataset['y'] = torch.cat((server_dataset['y'], target[:floor(len(target) * (percentage / 100.0))]))
         logging.debug("Taking {} out of {} from worker {}, Total: [{}]".format(
             floor(len(data) * (percentage / 100.0)), 
             len(data), 
@@ -227,9 +268,9 @@ def load_mnist_dataset(train=True, transform=None):
     Returns:
         
     """  
-    logging.info("Loading train data from MNIST dataset...")
+    logging.info("Loading MNIST [train: {}] dataset...".format(train))
     return datasets.MNIST("/tmp/data", train=train, download=True, transform=transform)
-    
+
 
 # def load_mnist_data_test():
 #     logging.info("Loading test data from MNIST dataset.")
@@ -473,7 +514,7 @@ def find_best_weights_opt(reference_model, workers_model):
                 logging.debug("working on {} Layer {}, with {}".format(ww_id, layer_name, layer_param.shape))
                 tmp.append(layer_param.view(-1, 1))
                 # logging.info("working on {} Layer {}, with {}/{}".format(ww_id, layer_name, layer_param.shape, tmp[ii].shape))
-        workers_all_params = cat((workers_all_params, cat(tmp, axis=0)), dim=1)
+        workers_all_params = torch.cat((workers_all_params, torch.cat(tmp, axis=0)), dim=1)
         logging.debug("-- workers_all_params[{}]:\t{}".format(ww_n, workers_all_params.shape))
     
     # logging.info("")
@@ -483,7 +524,7 @@ def find_best_weights_opt(reference_model, workers_model):
     for ii, (layer_name, layer_param) in enumerate(ref_state.items()):
         if ii == 7:
             tmp.append(layer_param.view(-1, 1))
-    reference_layer = cat(tmp, axis=0)
+    reference_layer = torch.cat(tmp, axis=0)
     logging.debug("-- reference_layer: \t{}".format(reference_layer.shape))
 
     reference_layers = reference_layer.repeat(1, len(workers_model))
@@ -509,25 +550,49 @@ def find_best_weights_opt(reference_model, workers_model):
     return rho
 
 
-def map_shards_to_worker(splitted_datasets, workers_ids, num_shards_per_worker):
-    idx = [ii for ii in range(len(splitted_datasets))]
-    shuffle(idx)
+def load_object(parent_path, file_name):
+    full_path = "{}/{}".format(parent_path, file_name)
+    with open(full_path, 'rb') as input:
+        return pickle.load(input)
+
+
+def save_model(model_state, output_dir, name):
+    parent_dir = "{}/{}".format(output_dir, "models")
+    if not os.path.isdir(parent_dir):
+        logging.debug("Create a directory for model(s).")
+        os.mkdir(parent_dir)
+    full_path = "{}/{}".format(parent_dir, name)
+    logging.debug("Saving the model into " + full_path)
+    torch.save(model_state, full_path)
+
+
+def save_object(output_dir, file_name, obj):
+    logging.info("Writing object to {}".format(file_name))
+    full_path = "{}/{}".format(output_dir, file_name)
+    with open(full_path, 'wb') as pickle_file:
+        pickle.dump(obj, pickle_file, pickle.HIGHEST_PROTOCOL)
+
+
+def find_file(parent_path, file_name):
+    full_path = "{}/{}".format(parent_path, file_name)
+    return True if os.path.isfile(full_path) else False
+
+
+def map_shards_to_worker(splitted_datasets, workers_idx, num_shards_per_worker):
     federated_datasets = defaultdict(lambda: [])
-    for ii, ww_id in enumerate(workers_ids):
+    for ii, ww_id in enumerate(workers_idx):
         images, labels = [], []
         # Two shard should be given to each worker
         for shard_idx in range(num_shards_per_worker):
-            images.append(splitted_datasets[ii*num_shards_per_worker + shard_idx].data)
-            labels.append(splitted_datasets[ii*num_shards_per_worker + shard_idx].targets)
-        images = cat((images[0], images[1]))
-        labels = cat((labels[0], labels[1]))
-        federated_datasets[ww_id] = FLCustomDataset(
+            ds = next(splitted_datasets)
+            images.append(ds.data)
+            labels.append(ds.targets)
+        images = torch.cat((images[0], images[1]))
+        labels = torch.cat((labels[0], labels[1]))
+        yield {ww_id: FLCustomDataset(
             images,labels, 
             transform=transforms.Compose([
-                transforms.ToTensor()]))
-                
-    logging.info("Federated data to {} users..... OK".format(len(federated_datasets)))
-    return federated_datasets     
+                transforms.ToTensor()]))}
 
 
 def fraction_of_datasets(datasets, fraction):
@@ -535,12 +600,12 @@ def fraction_of_datasets(datasets, fraction):
         fraction * 100.0, int(fraction * len(datasets) * len(list(datasets.values())[0].targets))))
     images, labels = [], []
     for ww_id, dataset in datasets.items():
-        idx = randperm(len(dataset.targets))[:int(fraction * len(dataset.targets))]
+        idx = torch.randperm(len(dataset.targets))[:int(fraction * len(dataset.targets))]
         images.append(dataset.data[idx.tolist()])
         labels.append(dataset.targets[idx.tolist()])
 
     aggregate_dataset = FLCustomDataset(
-        cat(images), cat(labels),
+        torch.cat(images), torch.cat(labels),
         transform=transforms.Compose([
             transforms.ToTensor()])
     )
@@ -554,7 +619,7 @@ def merge_and_shuffle_dataset(datasets):
     for dataset in datasets:
         images.append(dataset.data)
         labels.append(dataset.targets)
-    images, labels = cat(images), cat(labels)
+    images, labels = torch.cat(images), torch.cat(labels)
     return shuffle_dataset(FLCustomDataset(
         images, labels, transform=transforms.Compose(
             [transforms.ToTensor()])))
@@ -571,7 +636,7 @@ def shuffle_dataset(dataset):
 def shuffle_data_labels(data, labels):
     # data.shape [x, 28, 28]
     # labels.shape [x]
-    rand_idx = randperm(len(labels))
+    rand_idx = torch.randperm(len(labels))
     new_data = data[rand_idx]
     new_labels = labels[rand_idx]
     return new_data, new_labels
@@ -580,7 +645,7 @@ def shuffle_data_labels(data, labels):
 def attack_shuffle_pixels(data):
     for ii in range(len(data)):
         pixels_flattened = data[ii].view(-1)
-        rand_idx = randperm(len(pixels_flattened))
+        rand_idx = torch.randperm(len(pixels_flattened))
         pixels_flattened = pixels_flattened[rand_idx]
         data[ii] = pixels_flattened.reshape(-1, 28, 28)
     return data
@@ -634,7 +699,7 @@ def attack_shuffle_labels_tensor(targets, fraction):
     print(targets[:10])
     num_categories = unique(targets)
     print(num_categories)
-    idx1 = shuffle(num_categories)[:int(fraction * len(num_categories))]
+    idx1 = random.shuffle(num_categories)[:int(fraction * len(num_categories))]
 
     # Permute idx1 as idx2
     idx2 = []
