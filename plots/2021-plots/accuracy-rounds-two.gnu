@@ -30,7 +30,7 @@ set key top right
 
 set grid ytics
 set xlabel 'Rounds'
-set xrange [0:230]
+set xrange [0:350]
 set yrange [0:100]
 set ylabel 'Test Accuracy' offset 1,0
 set xtics nomirror
