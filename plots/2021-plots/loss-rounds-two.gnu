@@ -31,8 +31,8 @@ set key top right
 set grid ytics
 set xlabel 'Rounds'
 set xrange [0:25]
-set yrange [0:100]
-set ylabel 'Test Accuracy' offset 1,0
+set yrange [0:4]
+set ylabel 'Training Loss' offset 1,0
 set xtics nomirror
 set ytics nomirror
 
@@ -44,8 +44,8 @@ title2="AVG"
 # title5="80%"
 # title1="Manupulated Data in Server"
 # title2="Pure Data in Server"
-plot file1 using 1:4 with linespoints ls 1 title title1, \
-file2 using 1:4 with linespoints ls 2 title title2
+plot file1 using 1:2 with linespoints ls 1 title title1, \
+file2 using 1:2 with linespoints ls 2 title title2
 # file4 using 1:4 with linespoints ls 4 title title4, \
 # file5 using 1:4 with linespoints ls 5 title title5,
 
