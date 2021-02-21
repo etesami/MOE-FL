@@ -9,7 +9,7 @@ import pickle
 import syft as sy
 import subprocess
 import random
-from random import sample, choice
+from random import sample
 from time import strftime
 from math import floor
 from collections import defaultdict
@@ -123,9 +123,12 @@ def make_output_dir(parent_log_dir_name, output_prefix):
 
 
 def get_workers_idx(population, num, excluded_idx):
+    return get_subset(population, num, excluded_idx)
+
+def get_subset(population, num, excluded_idx):
     idx = []
     while len(idx) < num:
-        idx_random = choice(population)
+        idx_random = random.choice(population)
         if idx_random not in (excluded_idx + idx):
             idx.append(idx_random)
     return idx
@@ -152,7 +155,18 @@ def get_flattened_data(data):
 
     return data_flattened_x, data_flattened_y
 
+
 def split_randomly_dataset(dataset, shards_num):
+    """Split whole dataset into `shards_num` categories and 
+    randomly return rearrange their position.
+
+    Args:
+        dataset ([torch.dataset]): 
+        shards_num (int): Number of shards
+
+    Yields:
+        [Iterable[FLCustomDataset]]: Returning a generator of FLCustomDDataset
+    """    
     samples_per_shards_num = int(len(dataset) / shards_num)
     logging.info(
         "Splitting the dataset into {} groups, each with {} samples...".format(shards_num, samples_per_shards_num))
@@ -167,6 +181,7 @@ def split_randomly_dataset(dataset, shards_num):
                 transform=transforms.Compose([
                     transforms.ToTensor()])
             )
+
 
 def dataset_info(dataset):
     list_keys = list(dataset.keys())
@@ -664,19 +679,18 @@ def attack_black_pixels(data):
     return data
 
 
-def attack_shuffle_labels(targets, percentage):
-    num_categories = np.unique(targets)
-    idx1 = np.array(sample(
-        num_categories.tolist(), 
-        int(percentage * 0.01 * len(num_categories))), dtype=np.int64)
+def attack_shuffle_labels(targets, fraction):
+    num_categories = torch.unique(targets).tolist()
+    num_categories = [int(ii) for ii in num_categories]
+    idx1 = get_subset(num_categories, fraction*len(num_categories), [])
     
     # Permute idx1 as idx2
     idx2 = []
     while len(idx2) < len(idx1):
         ii = len(idx2)
-        nn = choice(idx1)
+        nn = random.choice(idx1)
         if idx1[ii] != nn and nn not in idx2:
-            idx2.append(nn)
+            idx2.append(int(nn))
     idx2 = np.array(idx2)
     
     logging.debug("Attack shuffel idx1: {}".format(idx1))
@@ -687,12 +701,13 @@ def attack_shuffle_labels(targets, percentage):
         target_map[idx1[ii]] = idx2[ii]
 
     logging.debug("Target map for attack suffle labels: {}".format(target_map))
-    logging.debug("target labels before:\t{}...".format(targets[:15].ravel()))
+    logging.debug("target labels before:\t{}...".format(targets[:10]))
+    targets_np = targets.detach().clone().numpy()
     for ii in range(len(targets)):
-        if targets[ii][0] in target_map.keys():
-            targets[ii] = target_map[targets[ii][0]]
-    logging.debug("target labels after:\t{}...".format(targets[:10].ravel()))
-    return targets
+        if targets_np[ii] in target_map.keys():
+            targets_np[ii] = target_map[targets_np[ii]]
+    logging.debug("target labels after:\t{}...".format(targets_np[:10]))
+    return torch.tensor(targets_np, dtype=float32)
 
 
 def attack_shuffle_labels_tensor(targets, fraction):
@@ -705,7 +720,7 @@ def attack_shuffle_labels_tensor(targets, fraction):
     idx2 = []
     while len(idx2) < len(idx1):
         ii = len(idx2)
-        nn = choice(idx1)
+        nn = random.choice(idx1)
         if idx1[ii] != nn and nn not in idx2:
             idx2.append(nn)
     idx2 = tensor(idx2, dtype=int64)
@@ -725,6 +740,9 @@ def attack_shuffle_labels_tensor(targets, fraction):
     logging.debug("target labels after:\t{}...".format(targets[:10].ravel()))
     return targets
 
+
+def get_neptune_token():
+    return "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vdWkubmVwdHVuZS5haSIsImFwaV91cmwiOiJodHRwczovL3VpLm5lcHR1bmUuYWkiLCJhcGlfa2V5IjoiNmRhYmZmM2YtZDc5Yi00ZGMyLWE5MWEtMjVkMDEwOGNjYTliIn0="
 
 ################ EMNIST (google) related functions #################
 

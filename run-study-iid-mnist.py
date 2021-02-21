@@ -1,6 +1,6 @@
 """
 Usage: 
-    run-study-niid-mnist.py 
+    run-study-iid-mnist.py 
         (--avg | --opt) [--epochs=NUM] [--rounds=NUM]
         [--attack-type=ID] [--attackers-num=num] [--selected-workers=NUM]
         [--log] [--nep-log] [--output-prefix=NAME] 
@@ -152,18 +152,15 @@ def main():
         # Now sort the dataset and distribute among users
         mapped_ds_itr = utils.map_shards_to_worker(
             utils.split_randomly_dataset(
-                utils.sort_mnist_dataset(
-                    utils.load_mnist_dataset(
-                        train=True, 
-                        transform=transforms.Compose([transforms.ToTensor(),]))
-                ), 
+                utils.load_mnist_dataset(
+                    train=True, 
+                    transform=transforms.Compose([transforms.ToTensor(),])),
                 args.shards_num),
             workers_idx, 
             args.shards_per_worker_num)
 
         for mapped_ds in mapped_ds_itr:
-            for ww_id, dataset in mapped_ds.items():
-                mapped_datasets.update(mapped_ds)
+            mapped_datasets.update(mapped_ds)
 
         if args.local_log:
             utils.save_object(args.log_dir, "mapped_datasets", mapped_datasets)
@@ -209,7 +206,8 @@ def main():
         logging.info("Previous complete execution was found. Last run is: {}".format(previous_round))
     
     round_start = previous_round if previous_round == 0 else previous_round + 1
-    round_end = round_start + ROUNDS_BREAKDOWN if round_start + ROUNDS_BREAKDOWN < args.rounds else args.rounds
+    round_end = round_start + ROUNDS_BREAKDOWN \
+        if round_start + ROUNDS_BREAKDOWN < args.rounds else args.rounds
 
     server_model, server_model_name = FLNet().to(args.device), "R{}_server_model".format(previous_round)
     server_model_path = args.log_dir + "models"
