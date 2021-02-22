@@ -26,11 +26,11 @@ set style line 2 \
 #     pointtype 7 pointsize 3
 
 # set title figure_title
-set key top right
+set key bottom right
 
 set grid ytics
 set xlabel 'Rounds'
-set xrange [0:25]
+set xrange [0:100]
 set yrange [0:100]
 set ylabel 'Test Accuracy' offset 1,0
 set xtics nomirror
