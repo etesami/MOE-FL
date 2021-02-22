@@ -610,15 +610,30 @@ def map_shards_to_worker(splitted_datasets, workers_idx, num_shards_per_worker):
                 transforms.ToTensor()]))}
 
 
-def fraction_of_datasets(datasets, fraction):
+def fraction_of_datasets(datasets, fraction, attackers_idx=[]):
+    """Extract a fraction of data from each dataset and return 
+    the aggregated data as a FLCustomDataset.
+
+    Args:
+        datasets (dict[FLCustomDataset]): 
+        fraction (float): Fraction between 0.0 and 1.0
+
+    Returns:
+        [FLCustomDataset]:
+    """    
     logging.info("Extracting {}% of users data (total: {}) to be sent to the server...".format(
         fraction * 100.0, int(fraction * len(datasets) * len(list(datasets.values())[0].targets))))
     images, labels = [], []
     for ww_id, dataset in datasets.items():
         idx = torch.randperm(len(dataset.targets))[:int(fraction * len(dataset.targets))]
-        images.append(dataset.data[idx.tolist()])
+        if ww_id in attackers_idx:
+            images.append(
+                (dataset.data[idx.tolist()] +
+                np.random.randint(0, 1024, (len(idx),28,28))).byte()
+            )
+        else:
+            images.append(dataset.data[idx.tolist()])
         labels.append(dataset.targets[idx.tolist()])
-
     aggregate_dataset = FLCustomDataset(
         torch.cat(images), torch.cat(labels),
         transform=transforms.Compose([

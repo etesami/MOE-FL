@@ -13,17 +13,11 @@ attack:
     attack_type: 1
 server:
     data_fraction: 0.15 # Fraction of data that will be shared with the server
-    save_model: False
 mnist:
     shards_num: 200 # With 200 shards, there would be 300 samples per each shards
     shards_per_worker_num: 2
     selected_users_num: 30 
     total_users_num: 100 # Total number of users to partion data among them
-    # ref_model_path: "/home/savi/ehsan/FederatedLearning/data/R50_server_model"
-data:
-    EMNIST_PATH: "/home/ubuntu/data/EMNIST/"
-    FEMNIST_PATH: "/home/ubuntu/data/leaf_non_iid/data/femnist/data"
-    EMNIST_GOOGLE_PATH: "/home/ubuntu/data/fed_google"
 log:
     level: INFO
     interval: 7

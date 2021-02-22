@@ -2,7 +2,7 @@
 Usage: 
     run-study-iid-mnist.py 
         (--avg | --opt) [--epochs=NUM] [--rounds=NUM]
-        [--attack-type=ID] [--attackers-num=num] [--selected-workers=NUM]
+        [--attack-type=ID] [--not-pure] [--attackers-num=num] [--selected-workers=NUM]
         [--log] [--nep-log] [--output-prefix=NAME] 
 """
 from docopt import docopt
@@ -165,20 +165,6 @@ def main():
         if args.local_log:
             utils.save_object(args.log_dir, "mapped_datasets", mapped_datasets)
 
-    server_pub_dataset = None
-    if utils.find_file(args.log_dir, "server_pub_dataset"):
-        logging.info("server_pub_dataset was found. Loading from file...")
-        server_pub_dataset = utils.load_object(args.log_dir, "server_pub_dataset")
-    else:
-        server_pub_dataset = utils.fraction_of_datasets(mapped_datasets, args.server_data_fraction)
-        if args.local_log:
-            utils.save_object(args.log_dir, "server_pub_dataset", server_pub_dataset)
-
-    federated_server_loader = dict()
-    federated_server_loader['server'] = sy.FederatedDataLoader(
-            server_pub_dataset.federate([server]), batch_size=args.batch_size, shuffle=True, drop_last=False)
-
-    
     attackers_idx = None
     if utils.find_file(args.log_dir, "attackers"):
         logging.info("attackers list was found. Loading from file...")
@@ -187,6 +173,24 @@ def main():
         attackers_idx = utils.get_workers_idx(workers_idx, args.attackers_num, [])
         if args.local_log:
             utils.save_object(args.log_dir, "attackers", attackers_idx)
+
+    server_pub_dataset = None
+    if utils.find_file(args.log_dir, "server_pub_dataset"):
+        logging.info("server_pub_dataset was found. Loading from file...")
+        server_pub_dataset = utils.load_object(args.log_dir, "server_pub_dataset")
+    else:
+        if args.server_pure:
+            server_pub_dataset = utils.fraction_of_datasets(mapped_datasets, args.server_data_fraction)
+        else:
+            logging.info("Server data is NOT pure.")
+            server_pub_dataset = utils.fraction_of_datasets(
+                mapped_datasets, args.server_data_fraction, attackers_idx)
+        if args.local_log:
+            utils.save_object(args.log_dir, "server_pub_dataset", server_pub_dataset)
+            
+    federated_server_loader = dict()
+    federated_server_loader['server'] = sy.FederatedDataLoader(
+            server_pub_dataset.federate([server]), batch_size=args.batch_size, shuffle=True, drop_last=False)
 
     federated_train_loader = dict()
     logging.info("Creating federated dataloaders for workers...")

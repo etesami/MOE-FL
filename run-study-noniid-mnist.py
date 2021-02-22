@@ -2,7 +2,7 @@
 Usage: 
     run-study-niid-mnist.py 
         (--avg | --opt) [--epochs=NUM] [--rounds=NUM]
-        [--attack-type=ID] [--attackers-num=num] [--selected-workers=NUM]
+        [--attack-type=ID] [--not-pure] [--attackers-num=num] [--selected-workers=NUM]
         [--log] [--nep-log] [--output-prefix=NAME] 
 """
 from docopt import docopt
@@ -168,20 +168,6 @@ def main():
         if args.local_log:
             utils.save_object(args.log_dir, "mapped_datasets", mapped_datasets)
 
-    server_pub_dataset = None
-    if utils.find_file(args.log_dir, "server_pub_dataset"):
-        logging.info("server_pub_dataset was found. Loading from file...")
-        server_pub_dataset = utils.load_object(args.log_dir, "server_pub_dataset")
-    else:
-        server_pub_dataset = utils.fraction_of_datasets(mapped_datasets, args.server_data_fraction)
-        if args.local_log:
-            utils.save_object(args.log_dir, "server_pub_dataset", server_pub_dataset)
-
-    federated_server_loader = dict()
-    federated_server_loader['server'] = sy.FederatedDataLoader(
-            server_pub_dataset.federate([server]), batch_size=args.batch_size, shuffle=True, drop_last=False)
-
-    
     attackers_idx = None
     if utils.find_file(args.log_dir, "attackers"):
         logging.info("attackers list was found. Loading from file...")
@@ -190,6 +176,24 @@ def main():
         attackers_idx = utils.get_workers_idx(workers_idx, args.attackers_num, [])
         if args.local_log:
             utils.save_object(args.log_dir, "attackers", attackers_idx)
+
+    server_pub_dataset = None
+    if utils.find_file(args.log_dir, "server_pub_dataset"):
+        logging.info("server_pub_dataset was found. Loading from file...")
+        server_pub_dataset = utils.load_object(args.log_dir, "server_pub_dataset")
+    else:
+        if args.server_pure:
+            server_pub_dataset = utils.fraction_of_datasets(mapped_datasets, args.server_data_fraction)
+        else:
+            logging.info("Server data is NOT pure.")
+            server_pub_dataset = utils.fraction_of_datasets(
+                mapped_datasets, args.server_data_fraction, attackers_idx)
+        if args.local_log:
+            utils.save_object(args.log_dir, "server_pub_dataset", server_pub_dataset)
+
+    federated_server_loader = dict()
+    federated_server_loader['server'] = sy.FederatedDataLoader(
+            server_pub_dataset.federate([server]), batch_size=args.batch_size, shuffle=True, drop_last=False)
 
     federated_train_loader = dict()
     logging.info("Creating federated dataloaders for workers...")
@@ -321,6 +325,7 @@ if __name__ == '__main__':
         total_users_num=configs['mnist']['total_users_num'],
         selected_users_num=configs['mnist']['selected_users_num'],
         server_data_fraction=configs['server']['data_fraction'],
+        server_pure=False if arguments['--not-pure'] else True,
         mode="avg" if arguments['--avg'] else "opt",
         attack_type=int(arguments['--attack-type']) if arguments['--attack-type'] else configs['attack']['attack_type'],
         attackers_num=configs['attack']['attackers_num'],
@@ -359,12 +364,13 @@ if __name__ == '__main__':
         Rounds:\t{}\n\
         Total Number of Users:\t{}\n\
         Selected Users:\t{}\n\
+        Server Pure Data: {}\n\
         Mode:\t{}\n\
         Attack:\t{}\n\
         Attackers:\t{}\n\
         Output folder:\t{}".format(
             args.epochs, args.rounds, args.total_users_num, args.selected_users_num, 
-            args.mode, args.attack_type, args.attackers_num, args.log_dir
+            args.server_pure, args.mode, args.attack_type, args.attackers_num, args.log_dir
         ))
 
     # Neptune logging initialization

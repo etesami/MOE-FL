@@ -1,9 +1,9 @@
 class Arguments():
     def __init__(
         self, batch_size=None, test_batch_size=None, rounds=None, epochs=None, 
-        lr=None, momentum=None, weight_decay=None, shards_num=None, shards_per_worker_num=None, total_users_num=None, selected_users_num=None, 
-        server_data_fraction=None, mode=None,
-        attack_type=None, attackers_num=None, use_cuda=None, device=None, seed=None, log_interval=None, 
+        lr=None, momentum=None, weight_decay=None, shards_num=None, shards_per_worker_num=None, total_users_num=None, selected_users_num=None, server_data_fraction=None, 
+        server_pure=None, mode=None, attack_type=None, attackers_num=None, 
+        use_cuda=None, device=None, seed=None, log_interval=None, 
         log_level=None, log_format=None, log_dir=None, neptune_log=None, local_log=None):
 
         self.batch_size = batch_size
@@ -18,6 +18,7 @@ class Arguments():
         self.total_users_num = total_users_num
         self.selected_users_num = selected_users_num
         self.server_data_fraction = server_data_fraction
+        self.server_pure = server_pure
         self.mode = mode
         self.attack_type = attack_type
         self.attackers_num = attackers_num
