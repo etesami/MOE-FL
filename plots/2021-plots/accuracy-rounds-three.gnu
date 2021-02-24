@@ -31,7 +31,7 @@ set key width 1.8
 
 set grid ytics
 set xlabel 'Rounds'
-set xrange [0:150]
+set xrange [0:400]
 set yrange [0:100]
 set ylabel 'Test Accuracy' offset 1,0
 # set xtics 0, 20, 100
