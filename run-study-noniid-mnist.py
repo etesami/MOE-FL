@@ -1,8 +1,8 @@
 """
 Usage: 
     run-study-niid-mnist.py 
-        (--avg | --opt) [--epochs=NUM] [--rounds=NUM]
-        [--attack-type=ID] [--not-pure] [--attackers-num=num] [--selected-workers=NUM]
+        (--avg | --opt) --start-round=NUM --rounds=NUM 
+        [--not-pure] [--attackers-num=num]
         [--log] [--nep-log] [--output-prefix=NAME] 
 """
 from docopt import docopt
@@ -122,7 +122,7 @@ def train_workers_with_attack(federated_train_loader, models, workers_idx, attac
     return workers_loss
     
 
-def main():
+def main(start_round):
     logging.info("Total number of users: {}".format(args.total_users_num))
     workers_idx = ["worker_" + str(i) for i in range(args.total_users_num)]
     workers = create_workers(hook, workers_idx)
@@ -208,10 +208,11 @@ def main():
             transform=transforms.Compose([transforms.ToTensor(),])), 
         args.test_batch_size, shuffle=True, drop_last=False)
 
-    previous_round = 0
-    if utils.find_file(args.log_dir, "accuracy"):
-        previous_round = int(utils.get_last_round_num(args.log_dir, "accuracy"))
-        logging.info("Previous complete execution was found. Last run is: {}".format(previous_round))
+    previous_round = int(start_round)
+    logging.info("Use explicit starting round number: {}".format(start_round))
+    # if utils.find_file(args.log_dir, "accuracy"):
+    #     previous_round = int(utils.get_last_round_num(args.log_dir, "accuracy"))
+    #     logging.info("Previous complete execution was found. Last run is: {}".format(previous_round))
     
     round_start = previous_round if previous_round == 0 else previous_round + 1
     round_end = round_start + ROUNDS_BREAKDOWN if round_start + ROUNDS_BREAKDOWN < args.rounds else args.rounds
@@ -236,7 +237,7 @@ def main():
 
             # logging.info("Workers for this round: {}".format(workers_to_be_used))
             if args.local_log:
-                utils.write_to_file(args.log_dir, "selected_workers", workers_to_be_used, round_no=round_no)
+                utils.write_to_file(args.log_dir, "selected_workers_pca", workers_to_be_used, round_no=round_no)
             train_loss = train_workers_with_attack(federated_train_loader, workers_model, workers_to_be_used, attackers_idx, round_no, args)
 
             # Find the best weights and update the server model
@@ -276,8 +277,9 @@ def main():
                 utils.write_to_file(args.log_dir, "train_loss", train_loss, round_no=round_no)
                 utils.save_model(
                     server_model.state_dict(),
-                    "{}/{}".format(args.log_dir, "models"), 
-                    "R{}_{}".format(round_no, "server_model")
+                    args.log_dir, 
+                    "niid_np_{}_server_R{}".format(args.attackers_num, round_no) if not args.server_pure else \
+                            "niid_p_{}_{}_R{}".format(args.attackers_num, ww_id, round_no) 
                 )
                 for ww_id, ww_model in workers_model.items():
                     utils.save_model(
@@ -308,10 +310,10 @@ if __name__ == '__main__':
 
     if arguments['--rounds']:
         configs['runtime']['rounds'] = int(arguments['--rounds'])
-    if arguments['--epochs']:
-        configs['runtime']['epochs'] = int(arguments['--epochs'])
-    if arguments['--selected-workers']:
-        configs['mnist']['selected_users_num'] = int(arguments['--selected-workers'])
+    # if arguments['--epochs']:
+    #     configs['runtime']['epochs'] = int(arguments['--epochs'])
+    # if arguments['--selected-workers']:
+    #     configs['mnist']['selected_users_num'] = int(arguments['--selected-workers'])
     if arguments['--attackers-num']:
         configs['attack']['attackers_num'] = int(arguments['--attackers-num'])
 
@@ -335,7 +337,7 @@ if __name__ == '__main__':
         server_data_fraction=configs['server']['data_fraction'],
         server_pure=False if arguments['--not-pure'] else True,
         mode="avg" if arguments['--avg'] else "opt",
-        attack_type=int(arguments['--attack-type']) if arguments['--attack-type'] else configs['attack']['attack_type'],
+        attack_type=configs['attack']['attack_type'],
         attackers_num=configs['attack']['attackers_num'],
         use_cuda=configs['runtime']['use_cuda'],
         device=torch.device("cuda" if configs['runtime']['use_cuda'] else "cpu"),
@@ -386,7 +388,7 @@ if __name__ == '__main__':
         neptune.init(project_qualified_name=configs['log']['neptune_init'], api_token=utils.get_neptune_token())
         neptune.create_experiment(name=configs['log']['neptune_exp'], upload_stdout=False, upload_stderr=False)
         neptune.append_tag(args.log_dir.split("/")[1])
-    last_round = main()
+    last_round = main(arguments['--start-round'])
     if args.neptune_log:
         neptune.stop()
 
