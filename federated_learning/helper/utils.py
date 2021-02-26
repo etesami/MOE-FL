@@ -115,11 +115,20 @@ def get_app_root_dir():
             os.path.dirname(
                 os.path.dirname(os.path.abspath(__file__))))
 
+
 def make_output_dir(parent_log_dir_name, output_prefix):
     output_dir = "{}/{}_{}/".format(parent_log_dir_name, strftime("%Y%m%d_%H%M%S"), output_prefix)
     logging.info("Creating the output direcotry as {}.".format(output_dir))
     os.mkdir(output_dir)
     return output_dir
+
+
+def check_create_dir(dir_path):
+    if not os.path.isdir(dir_path):
+        os.mkdir(dir_path)
+        return True
+    else:
+        return False
 
 
 def get_workers_idx(population, num, excluded_idx):
