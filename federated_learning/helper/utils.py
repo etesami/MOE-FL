@@ -115,11 +115,20 @@ def get_app_root_dir():
             os.path.dirname(
                 os.path.dirname(os.path.abspath(__file__))))
 
+
 def make_output_dir(parent_log_dir_name, output_prefix):
     output_dir = "{}/{}_{}/".format(parent_log_dir_name, strftime("%Y%m%d_%H%M%S"), output_prefix)
     logging.info("Creating the output direcotry as {}.".format(output_dir))
     os.mkdir(output_dir)
     return output_dir
+
+
+def check_create_dir(dir_path):
+    if not os.path.isdir(dir_path):
+        os.mkdir(dir_path)
+        return True
+    else:
+        return False
 
 
 def get_workers_idx(population, num, excluded_idx):
@@ -571,8 +580,8 @@ def load_object(parent_path, file_name):
         return pickle.load(input)
 
 
-def save_model(model_state, output_dir, name):
-    parent_dir = "{}/{}".format(output_dir, "models")
+def save_model(model_state, parent_dir, name):
+    # parent_dir = "{}/{}".format(output_dir, "models")
     if not os.path.isdir(parent_dir):
         logging.debug("Create a directory for model(s).")
         os.mkdir(parent_dir)
@@ -602,8 +611,13 @@ def map_shards_to_worker(splitted_datasets, workers_idx, num_shards_per_worker):
             ds = next(splitted_datasets)
             images.append(ds.data)
             labels.append(ds.targets)
-        images = torch.cat((images[0], images[1]))
-        labels = torch.cat((labels[0], labels[1]))
+        if num_shards_per_worker > 1:
+            for ii in range(num_shards_per_worker-1):
+                images = torch.cat((images[ii], images[ii+1]))
+                labels = torch.cat((labels[ii], labels[ii+1]))
+        else:
+            images = images[0]
+            labels = labels[0]
         yield {ww_id: FLCustomDataset(
             images,labels, 
             transform=transforms.Compose([
@@ -725,35 +739,30 @@ def attack_shuffle_labels(targets, fraction):
     return torch.tensor(targets_np, dtype=float32)
 
 
-def attack_shuffle_labels_tensor(targets, fraction):
-    print(targets[:10])
-    num_categories = unique(targets)
-    print(num_categories)
-    idx1 = random.shuffle(num_categories)[:int(fraction * len(num_categories))]
+# def attack_shuffle_labels(targets, fraction):
+#     num_categories = unique(targets)
+#     idx1 = get_subset(num_categories, fraction*len(num_categories), [])
+#     logging.debug(idx1)
 
-    # Permute idx1 as idx2
-    idx2 = []
-    while len(idx2) < len(idx1):
-        ii = len(idx2)
-        nn = random.choice(idx1)
-        if idx1[ii] != nn and nn not in idx2:
-            idx2.append(nn)
-    idx2 = tensor(idx2, dtype=int64)
+#     # Permute idx1 as idx2
+#     idx2 = tensor(
+#         get_subset(idx1, len(idx1), []), 
+#         dtype=int64)
     
-    logging.debug("Attack shuffel idx1: {}".format(idx1))
-    logging.debug("Attack shuffel idx2: {}".format(idx2))
+#     logging.debug("Attack shuffel idx1: {}".format(idx1))
+#     logging.debug("Attack shuffel idx2: {}".format(idx2))
 
-    target_map = dict()
-    for ii in range(len(idx1)):
-        target_map[idx1[ii]] = idx2[ii]
+#     target_map = dict()
+#     for ii in range(len(idx1)):
+#         target_map[idx1[ii]] = idx2[ii]
 
-    logging.debug("Target map for attack suffle labels: {}".format(target_map))
-    logging.debug("target labels before:\t{}...".format(targets[:15].ravel()))
-    for ii in range(len(targets)):
-        if targets[ii][0] in target_map.keys():
-            targets[ii] = target_map[targets[ii][0]]
-    logging.debug("target labels after:\t{}...".format(targets[:10].ravel()))
-    return targets
+#     logging.debug("Target map for attack suffle labels: {}".format(target_map))
+#     logging.debug("target labels before:\t{}...".format(targets[:15].view(-1)))
+#     for ii in range(len(targets)):
+#         if targets[ii][0] in target_map.keys():
+#             targets[ii] = target_map[targets[ii][0]]
+#     logging.debug("target labels after:\t{}...".format(targets[:10].view(-1)))
+#     return targets
 
 
 def get_neptune_token():
