@@ -1,5 +1,5 @@
 runtime:
-    epochs: 5
+    epochs: 1
     rounds: 400
     lr: 0.01
     momentum: 0.5
@@ -14,11 +14,11 @@ attack:
 server:
     data_fraction: 0.15 # Fraction of data that will be shared with the server
 mnist:
-    load_fraction: 0.2
-    shards_num: 30 # With 200 shards, there would be 300 samples per each shards
-    shards_per_worker_num: 1
+    load_fraction: 1
+    shards_num: 200 # With 200 shards, there would be 300 samples per each shards
+    shards_per_worker_num: 2
     selected_users_num: 30 
-    total_users_num: 30 # Total number of users to partion data among them
+    total_users_num: 100 # Total number of users to partion data among them
 log:
     level: INFO
     interval: 7

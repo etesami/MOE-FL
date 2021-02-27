@@ -66,9 +66,9 @@ def test(model, test_loader, round_no, args):
     if args.neptune_log:
         neptune.log_metric("test_loss", test_loss)
         neptune.log_metric("test_acc", test_acc)
-    if args.local_log:
-        TO_FILE = '{} "{{/*Accuracy:}}\\n{}%" {}'.format(test_loss, test_acc, test_acc)
-        utils.write_to_file(args.log_dir, "accuracy", TO_FILE, round_no=round_no)
+    # if args.local_log:
+    #     TO_FILE = '{} "{{/*Accuracy:}}\\n{}%" {}'.format(test_loss, test_acc, test_acc)
+    #     utils.write_to_file(args.log_dir, "accuracy", TO_FILE, round_no=round_no)
         
     logging.debug('Test Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset), test_acc))
@@ -97,21 +97,34 @@ def train_workers_with_attack(federated_train_loader, models, workers_idx, attac
                                 ww = data.location
                                 model = models[ww.id]
                                 data, target = data.to("cpu"), target.to("cpu")
-                                model.train()
-                                model.send(ww.id)
-                                opt = workers_opt[ww.id]
-                                opt.zero_grad()
-                                output = model(data)
-                                loss = F.nll_loss(output, target)
-                                loss.backward()
-                                opt.step()
-                                model.get() # <-- NEW: get the model back
-                                loss = loss.get() # <-- NEW: get the loss back
-                                workers_loss[ww.id].append(loss.item())
-                                t4.set_postfix(ordered_dict={
-                                    'Worker':ww.id, 
-                                    'ATK':"[T]" if ww.id in attackers_idx else "[F]" , 
-                                    'BatchID':batch_idx, 'Loss':loss.item()})
+                                if ww.id in attackers_idx:
+                                    if args.attack_type == 1:
+                                        models[ww.id] = FLNet().to(args.device)
+                                    elif args.attack_type == 2:
+                                        ss = utils.negative_parameters(models[ww.id].state_dict())
+                                        models[ww.id].load_state_dict(ss)
+                                    t4.set_postfix(ordered_dict={
+                                        'Worker':ww.id, 
+                                        'ATK':"[T]" if ww.id in attackers_idx else "[F]" , 
+                                        'BatchID':batch_idx, 'Loss':'-'})
+                                    #TODO: Be careful about the break
+                                    break    
+                                else:
+                                    model.train()
+                                    model.send(ww.id)
+                                    opt = workers_opt[ww.id]
+                                    opt.zero_grad()
+                                    output = model(data)
+                                    loss = F.nll_loss(output, target)
+                                    loss.backward()
+                                    opt.step()
+                                    model.get() # <-- NEW: get the model back
+                                    loss = loss.get() # <-- NEW: get the loss back
+                                    workers_loss[ww.id].append(loss.item())
+                                    t4.set_postfix(ordered_dict={
+                                        'Worker':ww.id, 
+                                        'ATK':"[T]" if ww.id in attackers_idx else "[F]" , 
+                                        'BatchID':batch_idx, 'Loss':loss.item()})
                                 t4.update()
                         t3.update()
             t2.update()
@@ -128,54 +141,58 @@ def main(start_round):
     workers = create_workers(hook, workers_idx)
     server = create_workers(hook, ['server'])
     server = server['server']
-    if args.local_log:
-        utils.check_write_to_file(args.log_dir, "all_users", workers_idx)
+    # if args.local_log:
+    #     utils.check_write_to_file(args.log_dir, "all_users", workers_idx)
     
     attackers_idx = None
     if utils.find_file(args.log_dir, "attackers"):
         logging.info("attackers list was found. Loading from file...")
         attackers_idx = utils.load_object(args.log_dir, "attackers")
     else:
-        attackers_idx = utils.get_workers_idx(workers_idx, args.attackers_num, [])
-        if args.local_log:
-            utils.save_object(args.log_dir, "attackers", attackers_idx)
+        logging.error("This should not be happened in this study.")
+        exit(1)
+    #     attackers_idx = utils.get_workers_idx(workers_idx, args.attackers_num, [])
+    #     if args.local_log:
+    #         utils.save_object(args.log_dir, "attackers", attackers_idx)
 
     mapped_datasets = dict()
     if utils.find_file(args.log_dir, "mapped_datasets"):
         logging.info("mapped_datasets was found. Loading from file...")
         mapped_datasets = utils.load_object(args.log_dir, "mapped_datasets")
     else:
+        logging.error("This should not be happened in this study.")
+        exit(1)
         # Now sort the dataset and distribute among users
-        mapped_ds_itr = utils.map_shards_to_worker(
-            utils.split_randomly_dataset(
-                utils.sort_mnist_dataset(
-                    utils.fraction_of_datasets(
-                        {"dataset": utils.load_mnist_dataset(
-                            train=True, 
-                            transform=transforms.Compose([transforms.ToTensor(),]))},
-                        args.load_fraction, [])
-                ),
-                args.shards_num),
-            workers_idx, 
-            args.shards_per_worker_num)
+        # mapped_ds_itr = utils.map_shards_to_worker(
+        #     utils.split_randomly_dataset(
+        #         utils.sort_mnist_dataset(
+        #             utils.fraction_of_datasets(
+        #                 {"dataset": utils.load_mnist_dataset(
+        #                     train=True, 
+        #                     transform=transforms.Compose([transforms.ToTensor(),]))},
+        #                 args.load_fraction, [])
+        #         ),
+        #         args.shards_num),
+        #     workers_idx, 
+        #     args.shards_per_worker_num)
 
         # mapping to users and performin attacks
-        for mapped_ds in mapped_ds_itr:
-            for ww_id, dataset in mapped_ds.items():
-                if ww_id in attackers_idx:
-                    mapped_datasets.update(
-                        {ww_id: FLCustomDataset(
-                            utils.attack_shuffle_pixels(dataset.data),
-                            dataset.targets,
-                            transform=transforms.Compose([
-                                transforms.ToTensor()])
-                        )}
-                    )
-                else:
-                    mapped_datasets.update(mapped_ds)
+        # for mapped_ds in mapped_ds_itr:
+        #     for ww_id, dataset in mapped_ds.items():
+        #         if ww_id in attackers_idx:
+        #             mapped_datasets.update(
+        #                 {ww_id: FLCustomDataset(
+        #                     utils.attack_shuffle_pixels(dataset.data),
+        #                     dataset.targets,
+        #                     transform=transforms.Compose([
+        #                         transforms.ToTensor()])
+        #                 )}
+        #             )
+        #         else:
+        #             mapped_datasets.update(mapped_ds)
 
-        if args.local_log:
-            utils.save_object(args.log_dir, "mapped_datasets", mapped_datasets)
+        # if args.local_log:
+        #     utils.save_object(args.log_dir, "mapped_datasets", mapped_datasets)
 
 
     server_pub_dataset = None
@@ -183,14 +200,16 @@ def main(start_round):
         logging.info("server_pub_dataset was found. Loading from file...")
         server_pub_dataset = utils.load_object(args.log_dir, "server_pub_dataset")
     else:
-        if args.server_pure:
-            server_pub_dataset = utils.fraction_of_datasets(mapped_datasets, args.server_data_fraction)
-        else:
-            logging.info("Server data is NOT pure.")
-            server_pub_dataset = utils.fraction_of_datasets(
-                mapped_datasets, args.server_data_fraction, attackers_idx)
-        if args.local_log:
-            utils.save_object(args.log_dir, "server_pub_dataset", server_pub_dataset)
+        logging.error("This should not be happened in this study.")
+        exit(1)
+        # if args.server_pure:
+        #     server_pub_dataset = utils.fraction_of_datasets(mapped_datasets, args.server_data_fraction)
+        # else:
+        #     logging.info("Server data is NOT pure.")
+        #     server_pub_dataset = utils.fraction_of_datasets(
+        #         mapped_datasets, args.server_data_fraction, attackers_idx)
+        # if args.local_log:
+        #     utils.save_object(args.log_dir, "server_pub_dataset", server_pub_dataset)
 
     federated_server_loader = dict()
     federated_server_loader['server'] = sy.FederatedDataLoader(
@@ -227,17 +246,22 @@ def main(start_round):
                         params=server_model.parameters(), 
                         lr=args.lr, weight_decay=args.weight_decay)
     test_loss, test_acc = 0.0, 0.0
-    workers_to_be_used = workers_idx
     with tqdm(
         total=min(ROUNDS_BREAKDOWN, args.rounds - round_start), leave=True, colour="green", ncols=80, desc="Round\t", bar_format=TQDM_R_BAR) as t1:
         for round_no in range(round_start, round_end):
+            workers_to_be_used = random.sample(workers_idx, args.selected_users_num)
             workers_model = dict()
             for ww_id in workers_to_be_used:
                 workers_model[ww_id] = deepcopy(server_model)
 
             # logging.info("Workers for this round: {}".format(workers_to_be_used))
             if args.local_log:
-                utils.write_to_file(args.log_dir, "selected_workers_pca", workers_to_be_used, round_no=round_no)
+                utils.save_object(
+                    args.log_dir,
+                    "R{}_p_pca_workers".format(round_no) if args.server_pure else \
+                            "R{}_np_pca_workers".format(round_no) ,
+                    workers_to_be_used
+                )
             train_loss = train_workers_with_attack(federated_train_loader, workers_model, workers_to_be_used, attackers_idx, round_no, args)
 
             # Find the best weights and update the server model
@@ -261,8 +285,8 @@ def main(start_round):
                 for ww in train_loss:
                     loss += weights[ww] * train_loss[ww]
                 train_loss = loss
-                if args.local_log:
-                    utils.write_to_file(args.log_dir, "opt_weights", weights, round_no=round_no)
+                # if args.local_log:
+                #     utils.write_to_file(args.log_dir, "opt_weights", weights, round_no=round_no)
                     
             # logging.info("Update server model in this round...")
             server_model.load_state_dict(
@@ -271,22 +295,23 @@ def main(start_round):
 
             # Apply the server model to the test dataset
             # logging.info("Starting model evaluation on the test dataset...")
-            test_loss, test_acc = test(server_model, test_loader, round_no, args)
+            # test_loss, test_acc = test(server_model, test_loader, round_no, args)
 
             if args.local_log:
-                utils.write_to_file(args.log_dir, "train_loss", train_loss, round_no=round_no)
-                utils.save_model(
-                    server_model.state_dict(),
-                    args.log_dir, 
-                    "niid_np_{}_server_R{}".format(args.attackers_num, round_no) if not args.server_pure else \
-                            "niid_p_{}_{}_R{}".format(args.attackers_num, ww_id, round_no) 
-                )
+                # utils.write_to_file(args.log_dir, "train_loss", train_loss, round_no=round_no)
+                # utils.save_model(
+                #     server_model.state_dict(),
+                #     "{}/{}".format(args.log_dir, "models"), 
+                #     "pca_niid_np_{}_{}_server_R{}".format(args.mode, args.attackers_num, round_no) if not args.server_pure else \
+                #             "pca_niid_p_{}_{}_server_R{}".format(args.mode, args.attackers_num, round_no) 
+                # )
                 for ww_id, ww_model in workers_model.items():
                     utils.save_model(
                         ww_model.state_dict(),
-                        "{}/{}/workers_R{}".format(args.log_dir, "models", round_no), 
-                        "niid_np_{}_{}_R{}".format(args.attackers_num, ww_id, round_no) if not args.server_pure else \
-                            "niid_p_{}_{}_R{}".format(args.attackers_num, ww_id, round_no) 
+                        "{}/{}/workers_p_R{}".format(args.log_dir, "models", round_no) \
+                            if args.server_pure else \
+                                "{}/{}/workers_np_R{}".format(args.log_dir, "models", round_no), 
+                        "{}_model".format(ww_id) 
                     )
             if args.neptune_log:
                 neptune.log_metric("train_loss", train_loss)
@@ -357,16 +382,16 @@ if __name__ == '__main__':
     random.seed(seed)
     if args.local_log:
         logging.info("Saving the seed for this round: {}".format(seed))
-        utils.write_to_file(args.log_dir, "seeds", seed)
+        # utils.write_to_file(args.log_dir, "seeds", seed)
     torch.manual_seed(seed)
     
     # syft initialization
     hook = sy.TorchHook(torch)
 
     output_dir = None
-    if args.local_log:
-        logging.info("Saving the configuration file...")
-        utils.check_save_configs(args.log_dir, configs)
+    # if args.local_log:
+        # logging.info("Saving the configuration file...")
+        # utils.check_save_configs(args.log_dir, configs)
 
     logging.info(
         "Configs:\n\

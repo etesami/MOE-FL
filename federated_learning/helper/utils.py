@@ -591,7 +591,7 @@ def save_model(model_state, parent_dir, name):
 
 
 def save_object(output_dir, file_name, obj):
-    logging.info("Writing object to {}".format(file_name))
+    logging.debug("Writing object to {}".format(file_name))
     full_path = "{}/{}".format(output_dir, file_name)
     with open(full_path, 'wb') as pickle_file:
         pickle.dump(obj, pickle_file, pickle.HIGHEST_PROTOCOL)
