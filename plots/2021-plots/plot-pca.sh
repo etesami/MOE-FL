@@ -6,9 +6,11 @@ eval "$(~/.docopts -A args -h "$help" : "$@")"
 PARENT="/Users/ehsan/data/data_pca/"
 PREFIX=${args[PREFIX]}
 DIR=${args[DIR-NAME]}"/"
-R=`ls -1 $PARENT$DIR | wc -l | awk '{print $1}'`
-R=$(($R-1))
-for ii in $(seq 0 $R); do
+# R=`ls -1 $PARENT$DIR | wc -l | awk '{print $1}'`
+# R=$(($R-1))
+R=( '0' '50' '100' '150' '200' )
+# for ii in $(seq 0 $R); do
+for ii in ${R[@]}; do
     FILE=$PREFIX"_R"$ii".txt"
     echo $FILE
     gnuplot -persist -e "file1='$PARENT$DIR$FILE'" \

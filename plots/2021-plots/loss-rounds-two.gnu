@@ -30,7 +30,7 @@ set key top right
 
 set grid ytics
 set xlabel 'Rounds'
-set xrange [0:140]
+set xrange [0:200]
 set yrange [0:4]
 set ylabel 'Training Loss' offset 1,0
 set xtics nomirror

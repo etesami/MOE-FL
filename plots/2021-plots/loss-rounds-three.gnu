@@ -26,7 +26,7 @@ set style line 3 \
 #     pointtype 7 pointsize 3
 
 # set title figure_title
-set key top right opaque box
+set key center right opaque box
 set key width 1.8
 
 set grid ytics
