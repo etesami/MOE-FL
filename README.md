@@ -108,3 +108,13 @@ Each execution of the code will generate the following files:
 - We use `supervisor` to run the experiment. Each experiment runs for a specified number of rounds. Then it exits and gets restarted by the supervisor. This is necessary as PySyft does not handle memory properly and it will lead to memory leakage otherwise. You can check a few examples of how we utilize this approach by checking the `supervisor` folder.
 - In order to use the `neptune` logging system, you have to set the environment variables properly before starting the experiments. Please refer to their website for more information.
 
+
+## Citation
+```bibtex
+@article{parsaeefard2021robust,
+  title={Robust Federated Learning by Mixture of Experts},
+  author={Parsaeefard, Saeedeh and Etesami, Sayed Ehsan and Garcia, Alberto Leon},
+  journal={arXiv preprint arXiv:2104.11700},
+  year={2021}
+}
+```
