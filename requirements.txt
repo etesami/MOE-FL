@@ -1,5 +1,6 @@
 # Need the following packages installed systemwide:
-# python3-dev build-essential libsrtp2-dev libavformat-dev libavdevice-dev python3-wheel python3-venv
+# python3-dev build-essential libsrtp2-dev libavformat-dev 
+# libavdevice-dev python3-wheel python3-venv
 # 
 # pip install --upgrade pip 
 # pip install wheel setuptools
@@ -7,14 +8,12 @@
 
 ###### Requirements ######
 
-#numpy==1.18.1
 docopt==0.6.2
 git+https://github.com/OpenMined/PySyft.git@0.2.9
 cvxpy==1.1.7
 h5py
 Mosek
 matplotlib
-#idx2numpy
 coloredlogs
 pyyaml
 neptune-client
