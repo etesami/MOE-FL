@@ -88,7 +88,7 @@ run-study-niid-mnist.py
 
 ```
 
-# Results and Output
+## Results and Output
 Each execution of the code will generate the following files:
 
 - **accuracy**: Accuracy for each round
@@ -103,7 +103,8 @@ Each execution of the code will generate the following files:
 - **train_loss**: Loss of each round
 
 
-### Notes
+## Notes
 - In order to successfully run the experiment, you need to configure `cvxpy` package and provide appropriate solvers. We use [mosek](https://www.mosek.com), which requires a license to work correctly.
-- We use `supervisor` to run the experiment. Each experiment runs for a specified number of rounds. Then it exits and gets restarted by the supervisor. This is necessary as PySyft does not handle memory properly and it will lead to memory leakage otherwise. You can cehck a few examples how we utiliz this approach by checking `supervisor` folder.
-- In order to use `neptune` logging system, you have to set the environment variables properly before starting the experiments. Please refer to their website for more information.
+- We use `supervisor` to run the experiment. Each experiment runs for a specified number of rounds. Then it exits and gets restarted by the supervisor. This is necessary as PySyft does not handle memory properly and it will lead to memory leakage otherwise. You can check a few examples of how we utilize this approach by checking the `supervisor` folder.
+- In order to use the `neptune` logging system, you have to set the environment variables properly before starting the experiments. Please refer to their website for more information.
+
