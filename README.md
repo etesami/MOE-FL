@@ -58,7 +58,7 @@ mnist:
 ```
 
 ## Experiments
-You have two options to run the experiments, either with IID or Non-IID datasets. To do so, you can run `run-study-iid-mnist.py` or `run-study-niid-mnist.py`, respectively.
+You have two options to run the experiments, either with IID or Non-IID datasets. To do so, you can run `run-study-iid-mnist.py` or `run-study-niid-mnist.py`, respectively. You can overwrite some values like `epochs` and `rounds` in `configs/default.yml` when you run the script using command-line options. Options in brackets "[ ]" are optional and options in parens "( )" are required.
 
 ```bash
 run-study-iid-mnist.py 
@@ -66,7 +66,8 @@ run-study-iid-mnist.py
         [--epochs=NUM] \
         [--rounds=NUM] \
         [--attack-type=ID] \
-        [--attackers-num=num] \[--selected-workers=NUM] \
+        [--attackers-num=num] \
+        [--selected-workers=NUM] \
         [--log] \ # Enable logging
         [--nep-log] \ # Enable neptune logging
         [--output-prefix=NAME] 
